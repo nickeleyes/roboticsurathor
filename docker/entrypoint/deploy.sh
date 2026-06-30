@@ -1,6 +1,10 @@
 #!/bin/bash
 set -e # Exit on error
 
+source "${HOME}/venv/bin/activate"
+source /opt/ros/humble/setup.bash
+export ROS_LOCALHOST_ONLY=1
+
 # Run the deployment script
 # Check for script existence before running
 DEPLOY_SCRIPT="scripts/deploy_g1.py"

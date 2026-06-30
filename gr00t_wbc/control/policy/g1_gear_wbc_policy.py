@@ -54,7 +54,30 @@ class G1GearWbcPolicy(Policy):
 
     def load_onnx_policy(self, model_path: str):
         print(f"Loading ONNX policy from {model_path}")
-        model = ort.InferenceSession(model_path)
+        available_providers = ort.get_available_providers()
+        preferred_providers = [
+            provider
+            for provider in ("CUDAExecutionProvider", "CPUExecutionProvider")
+            if provider in available_providers
+        ]
+
+        if not preferred_providers:
+            raise RuntimeError(
+                "No supported ONNX Runtime execution providers are available. "
+                f"Available providers: {available_providers}"
+            )
+
+        model = ort.InferenceSession(model_path, providers=preferred_providers)
+        active_providers = model.get_providers()
+
+        if "CUDAExecutionProvider" not in active_providers:
+            print(
+                "WARNING: CUDAExecutionProvider is not active for the ONNX policy. "
+                f"Available providers: {available_providers}; active providers: {active_providers}. "
+                "Install onnxruntime-gpu and verify Docker GPU access if this should run on the GPU."
+            )
+        else:
+            print(f"ONNX Runtime active providers: {active_providers}")
 
         def run_inference(input_tensor):
             ort_inputs = {model.get_inputs()[0].name: input_tensor.cpu().numpy()}

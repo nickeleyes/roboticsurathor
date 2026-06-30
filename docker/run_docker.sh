@@ -266,15 +266,13 @@ function install_nvidia_toolkit {
 function build_docker_image {
     echo "Building Docker image: $DEPLOY_CONTAINER"
 
-    sudo docker buildx build \
+    sudo docker build --pull=false \
         --build-arg USERNAME=$USERNAME \
         --build-arg USERID=$USERID \
         --build-arg HOME_DIR=$DOCKER_HOME_DIR \
         --build-arg WORKTREE_NAME=$WORKTREE_NAME \
-        --cache-from $CACHE_FROM \
-        -t $DEPLOY_CONTAINER \
+        --tag $DEPLOY_CONTAINER \
         -f docker/Dockerfile.deploy \
-        --load \
         .
 
     # Tag for persistent cache
@@ -294,6 +292,9 @@ function build_with_cleanup {
     
     install_docker_buildx
     install_nvidia_toolkit
+   
+    sudo bash "$SCRIPT_DIR/build_deploy_base.sh"
+   
     build_docker_image
 }
 
@@ -376,8 +377,8 @@ fi
 
 # Set GPU runtime based on architecture
 if is_arm64; then
-    echo "Detected ARM64 architecture (Jetson Orin), using device access instead of nvidia runtime..."
-    GPU_RUNTIME_ARGS="--device /dev/nvidia0 --device /dev/nvidiactl --device /dev/nvidia-modeset --device /dev/nvidia-uvm --device /dev/nvidia-uvm-tools"
+    echo "Detected ARM64 architecture, using NVIDIA runtime for GPU driver/library injection..."
+    GPU_RUNTIME_ARGS="--runtime=nvidia"
 else
     GPU_RUNTIME_ARGS="--gpus all --runtime=nvidia"
 fi

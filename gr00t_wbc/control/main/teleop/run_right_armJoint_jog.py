@@ -1,0 +1,108 @@
+import time
+
+import numpy as np
+from scipy.spatial.transform import Rotation as R
+
+from gr00t_wbc.control.main.constants import CONTROL_GOAL_TOPIC, STATE_TOPIC_NAME
+from gr00t_wbc.control.robot_model.instantiation.g1 import instantiate_g1_robot_model
+from gr00t_wbc.control.teleop.solver.hand.instantiation.g1_hand_ik_instantiation import (
+    instantiate_g1_hand_ik_solver,
+)
+from gr00t_wbc.control.teleop.teleop_retargeting_ik import TeleopRetargetingIK
+from gr00t_wbc.control.utils.keyboard_dispatcher import KeyboardDispatcher
+from gr00t_wbc.control.utils.ros_utils import ROSManager, ROSMsgPublisher, ROSMsgSubscriber
+
+
+class RightArmIKJog:
+    def __init__(self):
+        self.robot = instantiate_g1_robot_model()
+        left_hand_ik, right_hand_ik = instantiate_g1_hand_ik_solver()
+        self.ik = TeleopRetargetingIK(
+            robot_model=self.robot,
+            left_hand_ik_solver=left_hand_ik,
+            right_hand_ik_solver=right_hand_ik,
+            body_active_joint_groups=["upper_body"],
+        )
+        self.publisher = ROSMsgPublisher(CONTROL_GOAL_TOPIC)
+        self.state_subscriber = ROSMsgSubscriber(STATE_TOPIC_NAME)
+        self.frame = self.robot.supplemental_info.hand_frame_names["right"]
+
+        self.robot.cache_forward_kinematics(self.robot.default_body_pose)
+        self.target = self.robot.frame_placement(self.frame).homogeneous.copy()
+        self.set_horizontal_rotation()
+        self.hand_closed = False
+        self.right_hand_open = np.zeros(7)
+        self.right_hand_close = np.array([0.0, -0.7, -0.7, 1.0, 1.5, 1.0, 1.5])
+        upper_body = list(self.robot.get_joint_group_indices("upper_body"))
+        right_hand = self.robot.get_joint_group_indices("right_hand")
+        self.right_hand_in_upper_body = [upper_body.index(idx) for idx in right_hand]
+        print(f"target xyz: {self.target[:3, 3]}")
+
+    def set_horizontal_rotation(self):
+        normal = np.array([0.0, 1, 0])
+        state = self.state_subscriber.get_msg()
+        if state is not None and "floating_base_pose" in state:
+            q_wxyz = np.array(state["floating_base_pose"][3:7])
+            base_rot_world = R.from_quat(q_wxyz[[1, 2, 3, 0]]).as_matrix()
+            normal = base_rot_world.T @ normal
+
+        x_axis = self.target[:3, 0] - normal * np.dot(self.target[:3, 0], normal)
+        x_axis = x_axis / np.linalg.norm(x_axis)
+        y_axis = np.cross(normal, x_axis)
+        self.target[:3, :3] = np.column_stack([x_axis, y_axis, normal])
+
+    def handle_keyboard_button(self, key):
+        if key == "j":
+            self.target[0, 3] -= 0.02
+        elif key == "k":
+            self.target[0, 3] += 0.02
+        elif key == "l":
+            self.target[1, 3] -= 0.02
+        elif key == ";":
+            self.target[1, 3] += 0.02
+        elif key == ",":
+            self.target[2, 3] -= 0.02
+        elif key == ".":
+            self.target[2, 3] += 0.02
+        elif key == "q":
+            self.hand_closed = not self.hand_closed
+            print("right gripper:", "close" if self.hand_closed else "open")
+        elif key == "i":
+            self.set_horizontal_rotation()
+            self.ik.set_goal(
+                {"body_data": {self.frame: self.target}, "left_hand_data": None, "right_hand_data": None}
+            )
+            target_upper_body_pose = self.ik.get_action()
+            target_upper_body_pose[self.right_hand_in_upper_body] = (
+                self.right_hand_close if self.hand_closed else self.right_hand_open
+            )
+            self.publisher.publish(
+                {
+                    "target_upper_body_pose": target_upper_body_pose,
+                    "target_time": time.monotonic() + 0.5,
+                }
+            )
+        else:
+            return
+        print(f"target xyz: {np.round(self.target[:3, 3], 3)}")
+
+
+def main():
+    ros = ROSManager(node_name="RightArmIKJog")
+    jog = RightArmIKJog()
+    keyboard = KeyboardDispatcher()
+    keyboard.register(jog)
+    keyboard.start()
+
+    try:
+        while ros.ok():
+            time.sleep(0.1)
+    except ros.exceptions():
+        pass
+    finally:
+        keyboard.stop()
+        ros.shutdown()
+
+
+if __name__ == "__main__":
+    main()
