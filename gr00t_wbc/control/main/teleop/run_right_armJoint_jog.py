@@ -18,70 +18,48 @@ class RightArmIKJog:
         self.robot = instantiate_g1_robot_model()
         left_hand_ik, right_hand_ik = instantiate_g1_hand_ik_solver()
         self.ik = TeleopRetargetingIK(
-            robot_model=self.robot,
-            left_hand_ik_solver=left_hand_ik,
-            right_hand_ik_solver=right_hand_ik,
-            body_active_joint_groups=["upper_body"],
+            self.robot, left_hand_ik, right_hand_ik, body_active_joint_groups=["upper_body"]
         )
         self.publisher = ROSMsgPublisher(CONTROL_GOAL_TOPIC)
         self.state_subscriber = ROSMsgSubscriber(STATE_TOPIC_NAME)
         self.frame = self.robot.supplemental_info.hand_frame_names["right"]
+        self.closed = False
+        self.open_q = np.zeros(7)
+        self.close_q = np.array([0.815625, 0.928125, 0.0, 0.0, 0.45, -0.50625, -0.9])
 
         self.robot.cache_forward_kinematics(self.robot.default_body_pose)
         self.target = self.robot.frame_placement(self.frame).homogeneous.copy()
-        self.set_horizontal_rotation()
-        self.hand_closed = False
-        self.right_hand_open = np.zeros(7)
-        self.right_hand_close = np.array([0.0, -0.7, -0.7, 1.0, 1.5, 1.0, 1.5])
         upper_body = list(self.robot.get_joint_group_indices("upper_body"))
-        right_hand = self.robot.get_joint_group_indices("right_hand")
-        self.right_hand_in_upper_body = [upper_body.index(idx) for idx in right_hand]
-        print(f"target xyz: {self.target[:3, 3]}")
+        self.hand_slice = [
+            upper_body.index(i) for i in self.robot.get_joint_group_indices("right_hand")
+        ]
+        self.point_hand()
+        print(f"target xyz: {np.round(self.target[:3, 3], 3)}")
 
-    def set_horizontal_rotation(self):
-        normal = np.array([0.0, 1, 0])
+    def point_hand(self):
+        normal = np.array([0.0, 1.0, 0.0])
         state = self.state_subscriber.get_msg()
         if state is not None and "floating_base_pose" in state:
-            q_wxyz = np.array(state["floating_base_pose"][3:7])
-            base_rot_world = R.from_quat(q_wxyz[[1, 2, 3, 0]]).as_matrix()
-            normal = base_rot_world.T @ normal
-
+            q = np.array(state["floating_base_pose"][3:7])
+            normal = R.from_quat(q[[1, 2, 3, 0]]).as_matrix().T @ normal
         x_axis = self.target[:3, 0] - normal * np.dot(self.target[:3, 0], normal)
-        x_axis = x_axis / np.linalg.norm(x_axis)
-        y_axis = np.cross(normal, x_axis)
-        self.target[:3, :3] = np.column_stack([x_axis, y_axis, normal])
+        x_axis /= np.linalg.norm(x_axis)
+        self.target[:3, :3] = np.column_stack([x_axis, np.cross(normal, x_axis), normal])
 
     def handle_keyboard_button(self, key):
-        if key == "j":
-            self.target[0, 3] -= 0.02
-        elif key == "k":
-            self.target[0, 3] += 0.02
-        elif key == "l":
-            self.target[1, 3] -= 0.02
-        elif key == ";":
-            self.target[1, 3] += 0.02
-        elif key == ",":
-            self.target[2, 3] -= 0.02
-        elif key == ".":
-            self.target[2, 3] += 0.02
+        moves = {"j": (0, -0.02), "k": (0, 0.02), "l": (1, -0.02), ";": (1, 0.02), ",": (2, -0.02), ".": (2, 0.02)}
+        if key in moves:
+            axis, step = moves[key]
+            self.target[axis, 3] += step
         elif key == "q":
-            self.hand_closed = not self.hand_closed
-            print("right gripper:", "close" if self.hand_closed else "open")
+            self.closed = not self.closed
+            print("right gripper:", "close" if self.closed else "open")
         elif key == "i":
-            self.set_horizontal_rotation()
-            self.ik.set_goal(
-                {"body_data": {self.frame: self.target}, "left_hand_data": None, "right_hand_data": None}
-            )
-            target_upper_body_pose = self.ik.get_action()
-            target_upper_body_pose[self.right_hand_in_upper_body] = (
-                self.right_hand_close if self.hand_closed else self.right_hand_open
-            )
-            self.publisher.publish(
-                {
-                    "target_upper_body_pose": target_upper_body_pose,
-                    "target_time": time.monotonic() + 0.5,
-                }
-            )
+            self.point_hand()
+            self.ik.set_goal({"body_data": {self.frame: self.target}, "left_hand_data": None, "right_hand_data": None})
+            q = self.ik.get_action()
+            q[self.hand_slice] = self.close_q if self.closed else self.open_q
+            self.publisher.publish({"target_upper_body_pose": q, "target_time": time.monotonic() + 0.5})
         else:
             return
         print(f"target xyz: {np.round(self.target[:3, 3], 3)}")
@@ -89,11 +67,9 @@ class RightArmIKJog:
 
 def main():
     ros = ROSManager(node_name="RightArmIKJog")
-    jog = RightArmIKJog()
     keyboard = KeyboardDispatcher()
-    keyboard.register(jog)
+    keyboard.register(RightArmIKJog())
     keyboard.start()
-
     try:
         while ros.ok():
             time.sleep(0.1)
