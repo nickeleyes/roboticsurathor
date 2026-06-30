@@ -25,7 +25,8 @@ class RightArmIKJog:
         self.frame = self.robot.supplemental_info.hand_frame_names["right"]
         self.closed = False
         self.open_q = np.zeros(7)
-        self.close_q = np.array([0.815625, 0.928125, 0.0, 0.0, 0.45, -0.50625, -0.9])
+        self.close_q = np.array([1.45, 1.65, 0.0, 0.0, 0.0, -0.9, -1.6]) * (4.5 / 8)
+        self.close_q[4] += 0.45
 
         self.robot.cache_forward_kinematics(self.robot.default_body_pose)
         self.target = self.robot.frame_placement(self.frame).homogeneous.copy()
