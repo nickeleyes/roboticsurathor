@@ -24,11 +24,12 @@ class RightArmIKJog:
         self.publisher = ROSMsgPublisher(CONTROL_GOAL_TOPIC)
         self.state_subscriber = ROSMsgSubscriber(STATE_TOPIC_NAME)
         self.frame = self.robot.supplemental_info.hand_frame_names["right"]
-        self.closed = False
-        self.open_q = np.zeros(7)
+        self.last_base_pos = np.zeros(3)
+        self.last_base_rot = np.eye(3)
+        self.have_base_pose = False
         self.close_q = np.array([1.45, 1.65, 1.45, 1.65, 0.0, -0.9, -1.6])
         self.hover = np.array([0.0, 0.0, 0.30])
-        table = np.array([1.1, 0.0, 0.45])
+        table = np.array([1.1, 0.0, 0.6])
         self.board = table + np.array([
             [0.108, 0.1512, 0.048],
             [0.108, -0.1512, 0.048],
@@ -41,28 +42,45 @@ class RightArmIKJog:
         self.hand_slice = [upper_body.index(i) for i in self.robot.get_joint_group_indices("right_hand")]
         self.point_hand()
 
-    def point_hand(self):
-        normal = np.array([0.0, 1.0, 0.0])
+    def base_pose(self):
         state = self.state_subscriber.get_msg()
-
         if state is not None and "floating_base_pose" in state:
             q = np.array(state["floating_base_pose"][3:7])
-            normal = R.from_quat(q[[1, 2, 3, 0]]).as_matrix().T @ normal
+            self.last_base_pos = np.array(state["floating_base_pose"][:3])
+            self.last_base_rot = R.from_quat(q[[1, 2, 3, 0]]).as_matrix()
+            self.have_base_pose = True
+        elif not self.have_base_pose:
+            print("no base pose yet; assuming world origin")
+            self.have_base_pose = True
+        return self.last_base_pos, self.last_base_rot
+
+    def point_hand(self):
+        normal = np.array([0.0, 1.0, 0.0])
+        _, base_rot_world = self.base_pose()
+        if base_rot_world is not None:
+            normal = base_rot_world.T @ normal
 
         x_axis = self.target[:3, 0] - normal * np.dot(self.target[:3, 0], normal)
         x_axis /= np.linalg.norm(x_axis)
         self.target[:3, :3] = np.column_stack([x_axis, np.cross(normal, x_axis), normal])
 
     def world_to_robot(self, point_world):
-        state = self.state_subscriber.get_msg()
-        if state is None or "floating_base_pose" not in state:
-            print("waiting for robot base pose")
+        base_pos, base_rot_world = self.base_pose()
+        if base_pos is None:
             return None
-
-        base_pos = np.array(state["floating_base_pose"][:3])
-        q = np.array(state["floating_base_pose"][3:7])
-        base_rot_world = R.from_quat(q[[1, 2, 3, 0]]).as_matrix()
         return base_rot_world.T @ (point_world - base_pos)
+
+    def board_rotation_robot(self):
+        _, base_rot_world = self.base_pose()
+        if base_rot_world is None:
+            return None
+        left_to_right = self.board[1] - self.board[0]
+        front_to_back = self.board[2] - self.board[0]
+        x_axis = left_to_right / np.linalg.norm(left_to_right)
+        y_axis = front_to_back / np.linalg.norm(front_to_back)
+        z_axis = np.cross(y_axis, x_axis)
+        z_axis /= np.linalg.norm(z_axis)
+        return base_rot_world.T @ np.column_stack([x_axis, y_axis, z_axis])
 
     def board_cell_world(self, key):
         row, col = divmod(int(key) - 1, 3)
@@ -72,12 +90,11 @@ class RightArmIKJog:
         return ((1 - v) * front + v * back) + self.hover
 
     def send(self):
-        self.point_hand()
         self.ik.set_goal(
             {"body_data": {self.frame: self.target}, "left_hand_data": None, "right_hand_data": None}
         )
         q = self.ik.get_action()
-        q[self.hand_slice] = self.close_q if self.closed else self.open_q
+        q[self.hand_slice] = self.close_q
         self.publisher.publish({"target_upper_body_pose": q, "target_time": time.monotonic() + 0.5})
 
     def handle_keyboard_button(self, key):
@@ -95,11 +112,10 @@ class RightArmIKJog:
             self.target[axis, 3] += step
         elif key in "123456789":
             point_robot = self.world_to_robot(self.board_cell_world(key))
-            if point_robot is not None:
+            board_rot_robot = self.board_rotation_robot()
+            if point_robot is not None and board_rot_robot is not None:
                 self.target[:3, 3] = point_robot
-        elif key == "q":
-            self.closed = not self.closed
-            print("right gripper:", "close" if self.closed else "open")
+                self.target[:3, :3] = board_rot_robot
         elif key == "i":
             self.send()
 
