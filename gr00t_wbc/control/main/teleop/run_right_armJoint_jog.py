@@ -16,6 +16,7 @@ from gr00t_wbc.control.utils.ros_utils import ROSManager, ROSMsgPublisher, ROSMs
 class RightArmIKJog:
     def __init__(self):
         self.robot = instantiate_g1_robot_model()
+        self.robot.supplemental_info.hand_frame_names["right"] = "right_hand_palm_link"
         left_hand_ik, right_hand_ik = instantiate_g1_hand_ik_solver()
         self.ik = TeleopRetargetingIK(
             self.robot, left_hand_ik, right_hand_ik, body_active_joint_groups=["upper_body"]
@@ -25,45 +26,82 @@ class RightArmIKJog:
         self.frame = self.robot.supplemental_info.hand_frame_names["right"]
         self.closed = False
         self.open_q = np.zeros(7)
-        self.close_q = np.array([1.45, 1.65, 0.0, 0.0, 0.0, -0.9, -1.6]) * (4.5 / 8)
-        self.close_q[4] += 0.45
-
+        self.close_q = np.array([1.45, 1.65, 1.45, 1.65, 0.0, -0.9, -1.6])
+        self.hover = np.array([0.0, 0.0, 0.30])
+        table = np.array([1.1, 0.0, 0.45])
+        self.board = table + np.array([
+            [0.108, 0.1512, 0.048],
+            [0.108, -0.1512, 0.048],
+            [-0.108, 0.1512, 0.048],
+            [-0.108, -0.1512, 0.048],
+        ])
         self.robot.cache_forward_kinematics(self.robot.default_body_pose)
         self.target = self.robot.frame_placement(self.frame).homogeneous.copy()
         upper_body = list(self.robot.get_joint_group_indices("upper_body"))
-        self.hand_slice = [
-            upper_body.index(i) for i in self.robot.get_joint_group_indices("right_hand")
-        ]
+        self.hand_slice = [upper_body.index(i) for i in self.robot.get_joint_group_indices("right_hand")]
         self.point_hand()
-        print(f"target xyz: {np.round(self.target[:3, 3], 3)}")
 
     def point_hand(self):
         normal = np.array([0.0, 1.0, 0.0])
         state = self.state_subscriber.get_msg()
+
         if state is not None and "floating_base_pose" in state:
             q = np.array(state["floating_base_pose"][3:7])
             normal = R.from_quat(q[[1, 2, 3, 0]]).as_matrix().T @ normal
+
         x_axis = self.target[:3, 0] - normal * np.dot(self.target[:3, 0], normal)
         x_axis /= np.linalg.norm(x_axis)
         self.target[:3, :3] = np.column_stack([x_axis, np.cross(normal, x_axis), normal])
 
+    def world_to_robot(self, point_world):
+        state = self.state_subscriber.get_msg()
+        if state is None or "floating_base_pose" not in state:
+            print("waiting for robot base pose")
+            return None
+
+        base_pos = np.array(state["floating_base_pose"][:3])
+        q = np.array(state["floating_base_pose"][3:7])
+        base_rot_world = R.from_quat(q[[1, 2, 3, 0]]).as_matrix()
+        return base_rot_world.T @ (point_world - base_pos)
+
+    def board_cell_world(self, key):
+        row, col = divmod(int(key) - 1, 3)
+        u, v = (col + 0.5) / 3.0, (row + 0.5) / 3.0
+        front = (1 - u) * self.board[0] + u * self.board[1]
+        back = (1 - u) * self.board[2] + u * self.board[3]
+        return ((1 - v) * front + v * back) + self.hover
+
+    def send(self):
+        self.point_hand()
+        self.ik.set_goal(
+            {"body_data": {self.frame: self.target}, "left_hand_data": None, "right_hand_data": None}
+        )
+        q = self.ik.get_action()
+        q[self.hand_slice] = self.close_q if self.closed else self.open_q
+        self.publisher.publish({"target_upper_body_pose": q, "target_time": time.monotonic() + 0.5})
+
     def handle_keyboard_button(self, key):
-        moves = {"j": (0, -0.02), "k": (0, 0.02), "l": (1, -0.02), ";": (1, 0.02), ",": (2, -0.02), ".": (2, 0.02)}
+        moves = {
+            "j": (0, -0.02),
+            "k": (0, 0.02),
+            "l": (1, -0.02),
+            ";": (1, 0.02),
+            ",": (2, -0.02),
+            ".": (2, 0.02),
+        }
+
         if key in moves:
             axis, step = moves[key]
             self.target[axis, 3] += step
+        elif key in "123456789":
+            point_robot = self.world_to_robot(self.board_cell_world(key))
+            if point_robot is not None:
+                self.target[:3, 3] = point_robot
         elif key == "q":
             self.closed = not self.closed
             print("right gripper:", "close" if self.closed else "open")
         elif key == "i":
-            self.point_hand()
-            self.ik.set_goal({"body_data": {self.frame: self.target}, "left_hand_data": None, "right_hand_data": None})
-            q = self.ik.get_action()
-            q[self.hand_slice] = self.close_q if self.closed else self.open_q
-            self.publisher.publish({"target_upper_body_pose": q, "target_time": time.monotonic() + 0.5})
-        else:
-            return
-        print(f"target xyz: {np.round(self.target[:3, 3], 3)}")
+            self.send()
 
 
 def main():
@@ -76,10 +114,8 @@ def main():
             time.sleep(0.1)
     except ros.exceptions():
         pass
-    finally:
-        keyboard.stop()
-        ros.shutdown()
-
+    keyboard.stop()
+    ros.shutdown()
 
 if __name__ == "__main__":
     main()
