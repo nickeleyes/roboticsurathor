@@ -27,16 +27,8 @@ sudo docker buildx build \
     .
 ```
 
-There was also a commented local-load example for AMD64:
+The primary issue is that the existing docker file defaulted on building an image based on the linux amd64 platform. The problem with this is that the Jetson Thor system is actually an ARM-64 CPU architecture. The existing code did indeed have a commented out region - so to resolve the issue you must use that. MAin problem: the nvgear/ros-2:latest - is the deploy image built from location, but that uses an incorrect image that exists on the network server elsewhere. THat one that exists elsewhere is exclusively constructed for AMD-64, which means everytime the run.docker file refers to nvgear/ros-2:latest, even if the file did indeed build a new image based on arm64, it overrides that image / ignores it by refering to the online version - therefore pull=false resolves this issue.
 
-```bash
-# docker buildx build \
-#     --platform linux/amd64 \
-#     --file "${DOCKERFILE}" \
-#     --tag "${IMAGE_NAME}:${TAG}" \
-#     --load \
-#     .
-```
 
 Now the script builds an ARM64 base image and loads it into the local Docker image store:
 

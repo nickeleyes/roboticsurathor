@@ -2,25 +2,26 @@
     <worldbody>
         <body name="tictactoe_table" pos="0.65 -0.25 0.55">
             <geom name="table_top" type="box" size="0.09 0.09 0.025" rgba="0.45 0.32 0.22 1" />
-            <geom name="table_leg_fl" type="box" pos="0.07 0.07 -0.275" size="0.012 0.012 0.275" rgba="0.35 0.25 0.18 1" />
+            <!-- <geom name="table_leg_fl" type="box" pos="0.07 0.07 -0.275" size="0.012 0.012 0.275" rgba="0.35 0.25 0.18 1" />
             <geom name="table_leg_fr" type="box" pos="0.07 -0.07 -0.275" size="0.012 0.012 0.275" rgba="0.35 0.25 0.18 1" />
             <geom name="table_leg_bl" type="box" pos="-0.07 0.07 -0.275" size="0.012 0.012 0.275" rgba="0.35 0.25 0.18 1" />
-            <geom name="table_leg_br" type="box" pos="-0.07 -0.07 -0.275" size="0.012 0.012 0.275" rgba="0.35 0.25 0.18 1" />
+            <geom name="table_leg_br" type="box" pos="-0.07 -0.07 -0.275" size="0.012 0.012 0.275" rgba="0.35 0.25 0.18 1" /> -->
 
-            <geom name="cell_1" type="box" pos="0.05 0.05 0.031" size="0.024 0.024 0.003" rgba="0.25 0.25 0.25 1" />
-            <geom name="cell_2" type="box" pos="0.05 0 0.031" size="0.024 0.024 0.003" rgba="0.60 0.60 0.60 1" />
-            <geom name="cell_3" type="box" pos="0.05 -0.05 0.031" size="0.024 0.024 0.003" rgba="0.25 0.25 0.25 1" />
-            <geom name="cell_4" type="box" pos="0 0.05 0.031" size="0.024 0.024 0.003" rgba="0.60 0.60 0.60 1" />
-            <geom name="cell_5" type="box" pos="0 0 0.031" size="0.024 0.024 0.003" rgba="0.25 0.25 0.25 1" />
-            <geom name="cell_6" type="box" pos="0 -0.05 0.031" size="0.024 0.024 0.003" rgba="0.60 0.60 0.60 1" />
-            <geom name="cell_7" type="box" pos="-0.05 0.05 0.031" size="0.024 0.024 0.003" rgba="0.25 0.25 0.25 1" />
-            <geom name="cell_8" type="box" pos="-0.05 0 0.031" size="0.024 0.024 0.003" rgba="0.60 0.60 0.60 1" />
-            <geom name="cell_9" type="box" pos="-0.05 -0.05 0.031" size="0.024 0.024 0.003" rgba="0.25 0.25 0.25 1" />
+            <geom name="cell_1" type="box" pos="0.072 0.072 0.031" size="0.036 0.036 0.003" rgba="0.25 0.25 0.25 1" />
+            <geom name="cell_2" type="box" pos="0.072 0 0.031" size="0.036 0.036 0.003" rgba="0.60 0.60 0.60 1" />
+            <geom name="cell_3" type="box" pos="0.072 -0.072 0.031" size="0.036 0.036 0.003" rgba="0.25 0.25 0.25 1" />
+            <geom name="cell_4" type="box" pos="0 0.072 0.031" size="0.036 0.036 0.003" rgba="0.60 0.60 0.60 1" />
+            <geom name="cell_5" type="box" pos="0 0 0.031" size="0.036 0.036 0.003" rgba="0.25 0.25 0.25 1" />
+            <geom name="cell_6" type="box" pos="0 -0.072 0.031" size="0.036 0.036 0.003" rgba="0.60 0.60 0.60 1" />
+            <geom name="cell_7" type="box" pos="-0.072 0.072 0.031" size="0.036 0.036 0.003" rgba="0.25 0.25 0.25 1" />
+            <geom name="cell_8" type="box" pos="-0.072 0 0.031" size="0.036 0.036 0.003" rgba="0.60 0.60 0.60 1" />
+            <geom name="cell_9" type="box" pos="-0.072 -0.072 0.031" size="0.036 0.036 0.003" rgba="0.25 0.25 0.25 1" />
 
-            <site name="board_corner_front_left" pos="0.075 0.075 0.04" size="0.008" rgba="1 0 0 1" />
+            <!-- <site name="board_corner_front_left" pos="0.075 0.075 0.04" size="0.008" rgba="1 0 0 1" />
             <site name="board_corner_front_right" pos="0.075 -0.075 0.04" size="0.008" rgba="0 1 0 1" />
             <site name="board_corner_back_left" pos="-0.075 0.075 0.04" size="0.008" rgba="0 0 1 1" />
-            <site name="board_corner_back_right" pos="-0.075 -0.075 0.04" size="0.008" rgba="1 1 0 1" />
+            <site name="board_corner_back_right" pos="-0.075 -0.075 0.04" size="0.008" rgba="1 1 0 1" /> -->
+
         </body>
     </worldbody>
 </mujoco>
