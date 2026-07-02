@@ -32,17 +32,17 @@ class RightArmIKJog:
 
         self.base_pos = np.zeros(3)
         self.base_rot = np.eye(3)
-        self.have_base_pose = False
         self.table_world = np.array([0.65, -0.25, 0.55])
         self.cell_step = 0.05
         self.hover_height = 0.24
+        self.palm_down_rot = np.diag([1.0, -1.0, -1.0]) @ R.from_euler(
+            "x", 90.0, degrees=True
+        ).as_matrix()
 
         self.robot.cache_forward_kinematics(self.robot.default_body_pose)
         self.target = self.robot.frame_placement(self.frame).homogeneous.copy()
         upper_body = list(self.robot.get_joint_group_indices("upper_body"))
-        self.hand_slice = [
-            upper_body.index(i) for i in self.robot.get_joint_group_indices("right_hand")
-        ]
+        self.hand_slice = [upper_body.index(i) for i in self.robot.get_joint_group_indices("right_hand")]
 
     def base_pose(self):
         state = self.state_subscriber.get_msg()
@@ -50,10 +50,6 @@ class RightArmIKJog:
             q_wxyz = np.array(state["floating_base_pose"][3:7])
             self.base_pos = np.array(state["floating_base_pose"][:3])
             self.base_rot = R.from_quat(q_wxyz[[1, 2, 3, 0]]).as_matrix()
-            self.have_base_pose = True
-        elif not self.have_base_pose:
-            print("no base pose yet; assuming world origin")
-            self.have_base_pose = True
         return self.base_pos, self.base_rot
 
     def board_cell_world(self, key):
@@ -65,18 +61,11 @@ class RightArmIKJog:
         ])
         return self.table_world + cell_local
 
-    def point_palm_down(self):
-        z_axis = np.array([0.0, 0.0, -1.0])
-        x_axis = np.array([1.0, 0.0, 0.0])
-        y_axis = np.cross(z_axis, x_axis)
-        palm_down = np.column_stack([x_axis, y_axis, z_axis])
-        self.target[:3, :3] = palm_down @ R.from_euler("x", 90.0, degrees=True).as_matrix()
-
     def set_goal_from_board_cell(self, key):
         goal_world = self.board_cell_world(key)
         base_pos, base_rot = self.base_pose()
         self.target[:3, 3] = base_rot.T @ (goal_world - base_pos)
-        self.point_palm_down()
+        self.target[:3, :3] = self.palm_down_rot
         print(f"goal cell {key}: world {np.round(goal_world, 3)} robot {np.round(self.target[:3, 3], 3)}")
 
     def send(self):
