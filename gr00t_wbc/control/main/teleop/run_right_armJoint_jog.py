@@ -16,78 +16,68 @@ from gr00t_wbc.control.utils.ros_utils import ROSManager, ROSMsgPublisher, ROSMs
 class RightArmIKJog:
     def __init__(self):
         self.robot = instantiate_g1_robot_model()
-        self.robot.supplemental_info.hand_frame_names["right"] = "right_hand_palm_link"
+        self.frame = "right_hand_palm_center"
+        self.robot.supplemental_info.hand_frame_names["right"] = self.frame
         left_hand_ik, right_hand_ik = instantiate_g1_hand_ik_solver()
         self.ik = TeleopRetargetingIK(
             self.robot, left_hand_ik, right_hand_ik, body_active_joint_groups=["upper_body"]
         )
+        self.ik.body_ik_solver.num_step_per_frame = 30
+        self.ik.body_ik_solver.update_weights(
+            {self.frame: {"position_cost": 80.0, "orientation_cost": 3.0}}
+        )
         self.publisher = ROSMsgPublisher(CONTROL_GOAL_TOPIC)
         self.state_subscriber = ROSMsgSubscriber(STATE_TOPIC_NAME)
-        self.frame = self.robot.supplemental_info.hand_frame_names["right"]
-        self.last_base_pos = np.zeros(3)
-        self.last_base_rot = np.eye(3)
-        self.have_base_pose = False
         self.close_q = np.array([1.45, 1.65, 1.45, 1.65, 0.0, -0.9, -1.6])
-        self.hover = np.array([0.0, 0.0, 0.30])
-        table = np.array([1.1, 0.0, 0.6])
-        self.board = table + np.array([
-            [0.108, 0.1512, 0.048],
-            [0.108, -0.1512, 0.048],
-            [-0.108, 0.1512, 0.048],
-            [-0.108, -0.1512, 0.048],
-        ])
+
+        self.base_pos = np.zeros(3)
+        self.base_rot = np.eye(3)
+        self.have_base_pose = False
+        self.table_world = np.array([0.65, -0.25, 0.55])
+        self.cell_step = 0.05
+        self.hover_height = 0.24
+
         self.robot.cache_forward_kinematics(self.robot.default_body_pose)
         self.target = self.robot.frame_placement(self.frame).homogeneous.copy()
         upper_body = list(self.robot.get_joint_group_indices("upper_body"))
-        self.hand_slice = [upper_body.index(i) for i in self.robot.get_joint_group_indices("right_hand")]
-        self.point_hand()
+        self.hand_slice = [
+            upper_body.index(i) for i in self.robot.get_joint_group_indices("right_hand")
+        ]
 
     def base_pose(self):
         state = self.state_subscriber.get_msg()
         if state is not None and "floating_base_pose" in state:
-            q = np.array(state["floating_base_pose"][3:7])
-            self.last_base_pos = np.array(state["floating_base_pose"][:3])
-            self.last_base_rot = R.from_quat(q[[1, 2, 3, 0]]).as_matrix()
+            q_wxyz = np.array(state["floating_base_pose"][3:7])
+            self.base_pos = np.array(state["floating_base_pose"][:3])
+            self.base_rot = R.from_quat(q_wxyz[[1, 2, 3, 0]]).as_matrix()
             self.have_base_pose = True
         elif not self.have_base_pose:
             print("no base pose yet; assuming world origin")
             self.have_base_pose = True
-        return self.last_base_pos, self.last_base_rot
-
-    def point_hand(self):
-        normal = np.array([0.0, 1.0, 0.0])
-        _, base_rot_world = self.base_pose()
-        if base_rot_world is not None:
-            normal = base_rot_world.T @ normal
-
-        x_axis = self.target[:3, 0] - normal * np.dot(self.target[:3, 0], normal)
-        x_axis /= np.linalg.norm(x_axis)
-        self.target[:3, :3] = np.column_stack([x_axis, np.cross(normal, x_axis), normal])
-
-    def world_to_robot(self, point_world):
-        base_pos, base_rot_world = self.base_pose()
-        if base_pos is None:
-            return None
-        return base_rot_world.T @ (point_world - base_pos)
-
-    def board_rotation_robot(self):
-        _, base_rot_world = self.base_pose()
-        if base_rot_world is None:
-            return None
-        left_to_right = self.board[1] - self.board[0]
-        front_to_back = self.board[2] - self.board[0]
-        x_axis = left_to_right / np.linalg.norm(left_to_right)
-        y_axis = front_to_back / np.linalg.norm(front_to_back)
-        z_axis = np.cross(y_axis, x_axis)
-        z_axis /= np.linalg.norm(z_axis)
-        return base_rot_world.T @ np.column_stack([x_axis, y_axis, z_axis])
+        return self.base_pos, self.base_rot
 
     def board_cell_world(self, key):
         row, col = divmod(int(key) - 1, 3)
-        u, v = (col + 0.5) / 3.0, (row + 0.5) / 3.0
-        front = (1 - u) * self.board[0] + u * self.board[1]
-        back = (1 - u) * self.board[2] + u * self.board[3]
-        return ((1 - v) * front + v * back) + self.hover
+        cell_local = np.array([
+            self.cell_step * (1 - row),
+            self.cell_step * (1 - col),
+            self.hover_height,
+        ])
+        return self.table_world + cell_local
+
+    def point_palm_down(self):
+        z_axis = np.array([0.0, 0.0, -1.0])
+        x_axis = np.array([1.0, 0.0, 0.0])
+        y_axis = np.cross(z_axis, x_axis)
+        palm_down = np.column_stack([x_axis, y_axis, z_axis])
+        self.target[:3, :3] = palm_down @ R.from_euler("x", 90.0, degrees=True).as_matrix()
+
+    def set_goal_from_board_cell(self, key):
+        goal_world = self.board_cell_world(key)
+        base_pos, base_rot = self.base_pose()
+        self.target[:3, 3] = base_rot.T @ (goal_world - base_pos)
+        self.point_palm_down()
+        print(f"goal cell {key}: world {np.round(goal_world, 3)} robot {np.round(self.target[:3, 3], 3)}")
 
     def send(self):
         self.ik.set_goal(
@@ -96,27 +86,12 @@ class RightArmIKJog:
         q = self.ik.get_action()
         q[self.hand_slice] = self.close_q
         self.publisher.publish({"target_upper_body_pose": q, "target_time": time.monotonic() + 0.5})
+        print("sent")
 
     def handle_keyboard_button(self, key):
-        moves = {
-            "j": (0, -0.02),
-            "k": (0, 0.02),
-            "l": (1, -0.02),
-            ";": (1, 0.02),
-            ",": (2, -0.02),
-            ".": (2, 0.02),
-        }
-
-        if key in moves:
-            axis, step = moves[key]
-            self.target[axis, 3] += step
-        elif key in "123456789":
-            point_robot = self.world_to_robot(self.board_cell_world(key))
-            board_rot_robot = self.board_rotation_robot()
-            if point_robot is not None and board_rot_robot is not None:
-                self.target[:3, 3] = point_robot
-                self.target[:3, :3] = board_rot_robot
-        elif key == "i":
+        if key in "123456789":
+            self.set_goal_from_board_cell(key)
+        elif key in ("space", " "):
             self.send()
 
 
@@ -130,8 +105,10 @@ def main():
             time.sleep(0.1)
     except ros.exceptions():
         pass
-    keyboard.stop()
-    ros.shutdown()
+    finally:
+        keyboard.stop()
+        ros.shutdown()
+
 
 if __name__ == "__main__":
     main()
