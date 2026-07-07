@@ -46,6 +46,8 @@ class RightArmMove:
         self.cells = self._load_cells()
         self.selected_cell = "5"
         self.height_offset = 0.0
+        self.latest_q = None
+        self.latest_base = np.array([0, 0, 0, 1, 0, 0, 0], dtype=float)
         self.upper_body_indices = self.robot.get_joint_group_indices("upper_body")
         self.controlled_indices = self.robot.get_joint_group_indices(["waist_pitch_only", "right_arm"])
 
@@ -72,16 +74,19 @@ class RightArmMove:
         if task is not None and hasattr(task, "weights") and joint_name in body.joint_to_dof_index:
             task.weights[body.joint_to_dof_index[joint_name]] = weight
 
-    def _state(self):
-        state = self.state_subscriber.get_msg() or {}
-        q = np.array(state.get("q", self.robot.default_body_pose), dtype=float)
-        base = np.array(state.get("floating_base_pose", [0, 0, 0, 1, 0, 0, 0]), dtype=float)
-        return q, base
+    def _poll_state(self):
+        state = self.state_subscriber.get_msg()
+        if state is None:
+            return
+        if "q" in state:
+            self.latest_q = np.array(state["q"], dtype=float)
+        if "floating_base_pose" in state:
+            self.latest_base = np.array(state["floating_base_pose"], dtype=float)
 
     def _world_to_robot(self, point_world):
-        _, base = self._state()
-        base_pos = base[:3]
-        base_rot = R.from_quat(base[[4, 5, 6, 3]]).as_matrix()
+        self._poll_state()
+        base_pos = self.latest_base[:3]
+        base_rot = R.from_quat(self.latest_base[[4, 5, 6, 3]]).as_matrix()
         return base_rot.T @ (point_world - base_pos)
 
     def set_target(self, cell):
@@ -95,7 +100,19 @@ class RightArmMove:
         )
 
     def send(self):
-        current_q, _ = self._state()
+        self._poll_state()
+        if self.latest_q is None:
+            print("waiting for robot state before sending", flush=True)
+            return
+
+        current_q = self.latest_q.copy()
+        if self.ik.using_reduced_robot_model:
+            ik_seed = self.ik.body.full_to_reduced_configuration(current_q)
+            self.ik.body_ik_solver.configuration.q = self.ik.body.clip_configuration(ik_seed)
+        else:
+            self.ik.body_ik_solver.configuration.q = self.robot.clip_configuration(current_q)
+        self.ik.body_ik_solver.configuration.update()
+
         self.ik.set_goal(
             {"body_data": {self.frame: self.target}, "left_hand_data": None, "right_hand_data": None}
         )
@@ -110,6 +127,7 @@ class RightArmMove:
             {
                 "target_upper_body_pose": command_q[self.upper_body_indices],
                 "target_time": time.monotonic() + 1.2,
+                "preserve_upper_body_waist_pitch": True,
             }
         )
 

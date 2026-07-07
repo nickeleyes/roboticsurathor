@@ -76,8 +76,10 @@ class BodyIKSolver(Solver):
             self.solver = qpsolvers.available_solvers[0]
 
         q_default = self.robot.q_zero.copy()
-        q_default[self.robot.joint_to_dof_index["left_shoulder_roll_joint"]] = 0.2
-        q_default[self.robot.joint_to_dof_index["right_shoulder_roll_joint"]] = -0.2
+        if "left_shoulder_roll_joint" in self.robot.joint_to_dof_index:
+            q_default[self.robot.joint_to_dof_index["left_shoulder_roll_joint"]] = 0.2
+        if "right_shoulder_roll_joint" in self.robot.joint_to_dof_index:
+            q_default[self.robot.joint_to_dof_index["right_shoulder_roll_joint"]] = -0.2
 
         self.configuration = pink.Configuration(
             self.robot.pinocchio_wrapper.model,
