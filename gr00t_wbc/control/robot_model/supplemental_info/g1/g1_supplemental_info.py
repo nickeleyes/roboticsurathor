@@ -312,6 +312,12 @@ class G1SupplementalInfo(RobotSupplementalInfo):
                 "joints": [],
                 "groups": ["arms", "waist"],
             }
+        # Add only waist pitch to upper body
+        # elif waist_location == WaistLocation.UPPER_BODY:
+        #     modified_joint_groups["upper_body_no_hands"] = {
+        #         "joints": ["waist_pitch_joint"],
+        #         "groups": ["arms"],
+        #     }
         # For LOWER_BODY, keep default joint_groups as is
 
         super().__init__(
