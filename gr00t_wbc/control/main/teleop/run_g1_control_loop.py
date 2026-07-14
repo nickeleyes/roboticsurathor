@@ -16,6 +16,7 @@ from gr00t_wbc.control.main.constants import (
 )
 from gr00t_wbc.control.main.teleop.configs.configs import ControlLoopConfig
 from gr00t_wbc.control.main.teleop.gamepad_controller import GamepadController
+from gr00t_wbc.control.main.teleop.run_right_arm_move import RightArmMove
 from gr00t_wbc.control.policy.wbc_policy_factory import get_wbc_policy
 from gr00t_wbc.control.robot_model.instantiation.g1 import (
     instantiate_g1_robot_model,
@@ -69,6 +70,7 @@ def main(config: ControlLoopConfig):
 
     wbc_policy = get_wbc_policy("g1", robot_model, wbc_config, config.upper_body_joint_speed)
     controller = GamepadController()
+    right_arm_move = RightArmMove()
 
     keyboard_listener_pub = KeyboardListenerPublisher()
     keyboard_estop = KeyboardEStop()
@@ -108,6 +110,14 @@ def main(config: ControlLoopConfig):
                 # Measure policy setup time
                 with telemetry.timer("policy_setup"):
                     upper_body_cmd = upper_body_policy_subscriber.get_msg()
+                    controller_velocity = controller.get_velocity()
+                    wbc_policy.set_navigation_command(controller_velocity)
+                    while key := controller.get_key():
+                        if key == "program":
+                            right_arm_move.handle_keyboard_button("5")
+                            right_arm_move.handle_keyboard_button("space")
+                        else:
+                            dispatcher.handle_key(key)
 
                     t_now = time.monotonic()
 
@@ -123,10 +133,6 @@ def main(config: ControlLoopConfig):
                             1 / config.control_frequency
                         )
                         wbc_policy.set_goal(wbc_goal)
-                    wbc_policy.set_navigation_command(controller.get_velocity())
-                    while key := controller.get_key():
-                        print(f"Dispatching gamepad key: {key}")
-                        dispatcher.handle_key(key)
 
                 # Measure policy action calculation time
                 with telemetry.timer("policy_action"):
