@@ -15,6 +15,7 @@ from gr00t_wbc.control.main.constants import (
     STATE_TOPIC_NAME,
 )
 from gr00t_wbc.control.main.teleop.configs.configs import ControlLoopConfig
+from gr00t_wbc.control.main.teleop.gamepad_controller import GamepadController
 from gr00t_wbc.control.policy.wbc_policy_factory import get_wbc_policy
 from gr00t_wbc.control.robot_model.instantiation.g1 import (
     instantiate_g1_robot_model,
@@ -67,6 +68,7 @@ def main(config: ControlLoopConfig):
         env.start_simulator()
 
     wbc_policy = get_wbc_policy("g1", robot_model, wbc_config, config.upper_body_joint_speed)
+    controller = GamepadController()
 
     keyboard_listener_pub = KeyboardListenerPublisher()
     keyboard_estop = KeyboardEStop()
@@ -121,6 +123,10 @@ def main(config: ControlLoopConfig):
                             1 / config.control_frequency
                         )
                         wbc_policy.set_goal(wbc_goal)
+                    wbc_policy.set_navigation_command(controller.get_velocity())
+                    while key := controller.get_key():
+                        print(f"Dispatching gamepad key: {key}")
+                        dispatcher.handle_key(key)
 
                 # Measure policy action calculation time
                 with telemetry.timer("policy_action"):
@@ -227,6 +233,7 @@ def main(config: ControlLoopConfig):
         print("Cleaning up...")
         # the order of the following is important
         dispatcher.stop()
+        controller.close()
         ros_manager.shutdown()
         env.close()
 

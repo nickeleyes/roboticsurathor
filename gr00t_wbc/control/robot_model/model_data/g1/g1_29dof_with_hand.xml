@@ -88,6 +88,7 @@
       <!-- <geom type="sphere" contype="0" conaffinity="0" group="1" density="0" size="0.07" pos="0 0 -0.07605"
         rgba="0 0 1 1" /> -->
       <geom type="mesh" rgba="0.7 0.7 0.7 1" mesh="pelvis_contour_link" />
+      <site name="head_camera" pos="0.056 0.0 0.504" euler="0 -0.8 -1.57" />
       <body name="left_hip_pitch_link" pos="0 0.064452 -0.1027">
         <inertial pos="0.002741 0.047791 -0.02606" quat="0.954862 0.293964 0.0302556 0.030122"
           mass="1.35" diaginertia="0.00181517 0.00153422 0.00116212" />

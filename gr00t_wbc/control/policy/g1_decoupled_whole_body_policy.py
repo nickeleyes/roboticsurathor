@@ -27,6 +27,12 @@ class G1DecoupledWholeBodyPolicy(Policy):
         self.last_goal_time = time_module.monotonic()
         self.is_in_teleop_mode = False  # Track if lower body is in teleop mode
         self.preserve_upper_body_waist_pitch = False
+        self.navigation_command = None
+
+    def set_navigation_command(self, command):
+        """Set live locomotion velocity without changing upper-body goals."""
+        self.navigation_command = np.asarray(command, dtype=np.float32)
+        self.lower_body_policy.set_navigation_command(self.navigation_command)
 
     def set_observation(self, observation):
         # Upper body policy is open loop (just interpolation), so we don't need to set the observation
@@ -126,6 +132,8 @@ class G1DecoupledWholeBodyPolicy(Policy):
         q_arms = q[self.robot_model.get_joint_group_indices("arms")]
         base_height_command = upper_body_action.get("base_height_command", None)
         interpolated_navigate_cmd = upper_body_action.get("navigate_cmd", None)
+        if self.navigation_command is not None:
+            interpolated_navigate_cmd = self.navigation_command
 
         # Compute torso orientation relative to waist, to pass to lower body policy
         self.robot_model.cache_forward_kinematics(q, auto_clip=False)
