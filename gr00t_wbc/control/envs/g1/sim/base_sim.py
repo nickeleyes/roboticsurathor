@@ -460,6 +460,10 @@ class DefaultEnv:
             self.reset()
         if key == "v":
             self.update_viewer_camera()
+        if key == "camera_z" and self.viewer is not None:
+            self.viewer.cam.azimuth += 30
+        if key == "camera_x" and self.viewer is not None:
+            self.viewer.cam.elevation += 30
         if key in ["up", "down", "left", "right"]:
             self.apply_perturbation(key)
 

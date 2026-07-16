@@ -8,7 +8,17 @@ from queue import Empty, SimpleQueue
 class GamepadController:
     EVENT = struct.Struct("llHHi")
     AXES = {0: "x", 1: "y", 3: "rx"}  # ABS_X, ABS_Y, ABS_RX
-    BUTTONS = {315: "]", 304: "9", 310: "1", 311: "2", 307: "program"}
+    HATS = {
+        16: {-1: "waist_left", 1: "waist_right"},
+        17: {-1: "waist_up", 1: "waist_down"},
+    }
+    BUTTONS = {
+        315: "]",
+        304: "9",
+        310: "camera_x",  # LB
+        311: "camera_z",  # RB
+        307: "program",
+    }
 
     def __init__(self):
         self.path = "/dev/input/event4"
@@ -28,6 +38,8 @@ class GamepadController:
                 if event_type == 3 and code in self.AXES:  # EV_ABS
                     value = max(-1.0, min(1.0, value / 32768.0))
                     self.axes[self.AXES[code]] = 0.0 if abs(value) < self.deadzone else value
+                elif event_type == 3 and code in self.HATS and value in self.HATS[code]:
+                    self.pressed_keys.put(self.HATS[code][value])
                 elif event_type == 1 and value == 1:
                     if code in self.BUTTONS:
                         self.pressed_keys.put(self.BUTTONS[code])
