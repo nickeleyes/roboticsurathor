@@ -37,7 +37,7 @@ from gr00t_wbc.control.utils.telemetry import Telemetry
 CONTROL_NODE_NAME = "ControlPolicy"
 
 
-def main(config: ControlLoopConfig, program_action=None, startup_action=None, waist_action=None):
+def main(config: ControlLoopConfig, program_action=None, startup_action=None):
     ros_manager = ROSManager(node_name=CONTROL_NODE_NAME)
     node = ros_manager.node
 
@@ -117,8 +117,6 @@ def main(config: ControlLoopConfig, program_action=None, startup_action=None, wa
                         if key == "program":
                             if program_action is not None:
                                 program_action()
-                        elif key.startswith("waist_") and waist_action is not None:
-                            waist_action(key)
                         else:
                             dispatcher.handle_key(key)
 

@@ -19,7 +19,6 @@ BOARD_STATE = "000000000"
 
 
 def main(config: ControlLoopConfig):
-    config.enable_waist = True
     planner = BoardPlanner()
     controller = Controller()
     corners_world = board_corners_from_xml()
@@ -29,15 +28,8 @@ def main(config: ControlLoopConfig):
 
     def send(joints, duration):
         publisher.publish(
-            {
-                "target_upper_body_pose": joints,
-                "target_time": time.monotonic() + duration,
-                "preserve_upper_body_waist": True,
-            }
+            {"target_upper_body_pose": joints, "target_time": time.monotonic() + duration}
         )
-
-    def move_waist(key):
-        send(controller.move_waist(key), 1.0)
 
     def run_move():
         board = BOARD_STATE
@@ -77,7 +69,6 @@ def main(config: ControlLoopConfig):
         config,
         program_action=start_move,
         startup_action=relax_arms,
-        waist_action=move_waist,
     )
 
 

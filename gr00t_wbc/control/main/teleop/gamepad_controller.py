@@ -8,10 +8,6 @@ from queue import Empty, SimpleQueue
 class GamepadController:
     EVENT = struct.Struct("llHHi")
     AXES = {0: "x", 1: "y", 3: "rx"}  # ABS_X, ABS_Y, ABS_RX
-    HATS = {
-        16: {-1: "waist_left", 1: "waist_right"},
-        17: {-1: "waist_up", 1: "waist_down"},
-    }
     BUTTONS = {
         315: "]",
         304: "9",
@@ -21,11 +17,12 @@ class GamepadController:
     }
 
     def __init__(self):
-        self.path = "/dev/input/event4"
+        self.path = "/dev/input/event6"
         self.file = open(self.path, "rb", buffering=0)
         self.deadzone = 0.08
-        self.max_linear = 0.5
-        self.max_angular = 0.5
+        self.response_exponent = 3.0
+        self.max_linear = .7
+        self.max_angular = .7
         self.axes = {"x": 0.0, "y": 0.0, "rx": 0.0}
         self.pressed_keys = SimpleQueue()
         threading.Thread(target=self._read, daemon=True).start()
@@ -37,15 +34,22 @@ class GamepadController:
                 _, _, event_type, code, value = self.EVENT.unpack(data)
                 if event_type == 3 and code in self.AXES:  # EV_ABS
                     value = max(-1.0, min(1.0, value / 32768.0))
-                    self.axes[self.AXES[code]] = 0.0 if abs(value) < self.deadzone else value
-                elif event_type == 3 and code in self.HATS and value in self.HATS[code]:
-                    self.pressed_keys.put(self.HATS[code][value])
+                    self.axes[self.AXES[code]] = self._shape_axis(value)
                 elif event_type == 1 and value == 1:
                     if code in self.BUTTONS:
                         self.pressed_keys.put(self.BUTTONS[code])
         except (OSError, ValueError) as error:
             print(f"Gamepad reader stopped: {error}")
             self.axes = {"x": 0.0, "y": 0.0, "rx": 0.0}
+
+    def _shape_axis(self, value):
+        magnitude = abs(value)
+        if magnitude <= self.deadzone:
+            return 0.0
+
+        normalized = (magnitude - self.deadzone) / (1.0 - self.deadzone)
+        shaped = normalized**self.response_exponent
+        return shaped if value > 0.0 else -shaped
 
     def get_velocity(self):
         return [
