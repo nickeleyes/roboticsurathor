@@ -10,7 +10,7 @@ from sensor_msgs.msg import Image
 
 
 SAVE_DIR = "./camera_captures"
-TIMEOUT_SECONDS = 30.0
+TIMEOUT_SECONDS = 60.0
 
 SAVE_CONFIG = {
     "color": True,
@@ -66,9 +66,8 @@ class CameraFrameSaver(Node):
         self.saved = {key: False for key in SAVE_CONFIG}
         self.started_at = time.monotonic()
         self.finished = False
-        self._camera_subscriptions = []
-
-        callbacks = {
+        self._camera_subscription = None
+        self._callbacks = {
             "color": self.color_callback,
             "aligned": self.aligned_callback,
             "depth": self.depth_callback,
@@ -77,19 +76,35 @@ class CameraFrameSaver(Node):
         }
 
         print("\nConnecting to ROS 2 camera topics:\n")
+        self._pending_keys = []
         for key, enabled in SAVE_CONFIG.items():
             print(f"  {'enabled ' if enabled else 'disabled'} {key}: {TOPICS[key]}")
             if enabled:
-                self._camera_subscriptions.append(
-                    self.create_subscription(
-                        Image,
-                        TOPICS[key],
-                        callbacks[key],
-                        qos_profile_sensor_data,
-                    )
-                )
+                self._pending_keys.append(key)
         print()
+        self._current_key = None
+        self._subscribe_to_next_stream()
         self.timer = self.create_timer(0.1, self.check_finished)
+
+    def _subscribe_to_next_stream(self):
+        if not self._pending_keys:
+            self._current_key = None
+            return
+        self._current_key = self._pending_keys.pop(0)
+        self.started_at = time.monotonic()
+        print(f"Waiting for {self._current_key}: {TOPICS[self._current_key]}")
+        self._camera_subscription = self.create_subscription(
+            Image,
+            TOPICS[self._current_key],
+            self._callbacks[self._current_key],
+            qos_profile_sensor_data,
+        )
+
+    def _advance_stream(self):
+        if self._camera_subscription is not None:
+            self.destroy_subscription(self._camera_subscription)
+            self._camera_subscription = None
+        self._subscribe_to_next_stream()
 
     def all_saved(self):
         return all(not enabled or self.saved[key] for key, enabled in SAVE_CONFIG.items())
@@ -144,6 +159,9 @@ class CameraFrameSaver(Node):
         print(f"Saved right infrared: {path}, shape={frame.shape}")
 
     def check_finished(self):
+        if self._current_key is not None and self.saved[self._current_key]:
+            self._advance_stream()
+
         if self.all_saved():
             print(f"\nAll requested frames saved in {os.path.abspath(SAVE_DIR)}")
             for filename in sorted(os.listdir(SAVE_DIR)):

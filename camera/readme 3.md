@@ -60,15 +60,15 @@ Start the RealSense D435i publisher:
 ros2 launch realsense2_camera rs_launch.py \
   enable_color:=true \
   enable_depth:=true \
-  enable_infra1:=true \
-  enable_infra2:=true \
+  enable_infra1:=false \
+  enable_infra2:=false \
   enable_accel:=false \
   enable_gyro:=false \
-  pointcloud.enable:=true \
+  pointcloud.enable:=false \
   align_depth.enable:=true \
-  rgb_camera.profile:=640,480,15 \
-  depth_module.profile:=640,480,15 \
-  initial_reset:=true
+  rgb_camera.profile:=424,240,15 \
+  depth_module.profile:=424,240,15 \
+  initial_reset:=false
 ```
 
 Wait until the terminal reports:
