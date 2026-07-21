@@ -1,189 +1,120 @@
-import os
+"""Save one synchronized RGB/depth pair and its radial-distance map."""
 import time
+from pathlib import Path
 
 import cv2
+import matplotlib
 import numpy as np
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
-from sensor_msgs.msg import Image
+from sensor_msgs.msg import CameraInfo, Image
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
+OUTPUT = Path("camera_captures")
+TIMEOUT = 60
+MAX_SYNC_NS = 50_000_000  # 50 ms
 
 
-SAVE_DIR = "./camera_captures"
-TIMEOUT_SECONDS = 60.0
-
-SAVE_CONFIG = {
-    "color": True,
-    "aligned": True,
-    "depth": False,
-    "infra1": False,
-    "infra2": False,
-}
-
-TOPICS = {
-    "color": "/camera/color/image_raw",
-    "aligned": "/camera/aligned_depth_to_color/image_raw",
-    "depth": "/camera/depth/image_rect_raw",
-    "infra1": "/camera/infra1/image_rect_raw",
-    "infra2": "/camera/infra2/image_rect_raw",
-}
+def timestamp_ns(message):
+    stamp = message.header.stamp
+    return stamp.sec * 1_000_000_000 + stamp.nanosec
 
 
-def ros_img_to_numpy(msg):
-    dtype_map = {
-        "rgb8": (np.uint8, 3),
-        "bgr8": (np.uint8, 3),
-        "rgba8": (np.uint8, 4),
-        "mono8": (np.uint8, 1),
-        "mono16": (np.uint16, 1),
-        "16UC1": (np.uint16, 1),
-        "32FC1": (np.float32, 1),
-    }
-    dtype, channels = dtype_map.get(msg.encoding, (np.uint8, 1))
-    dtype = np.dtype(dtype).newbyteorder(">" if msg.is_bigendian else "<")
-    item_size = dtype.itemsize
-    row_values = msg.step // item_size
-    data = np.frombuffer(msg.data, dtype=dtype).reshape(msg.height, row_values)
-    useful_values = msg.width * channels
-    data = data[:, :useful_values]
-
-    if channels == 1:
-        frame = data.reshape(msg.height, msg.width)
-    else:
-        frame = data.reshape(msg.height, msg.width, channels)
-
-    if msg.encoding == "rgb8":
-        frame = frame[:, :, ::-1]
-    elif msg.encoding == "rgba8":
-        frame = cv2.cvtColor(frame, cv2.COLOR_RGBA2BGRA)
-    return frame
-
-
-class CameraFrameSaver(Node):
+class CameraCapture(Node):
     def __init__(self):
-        super().__init__("save_camera_frames")
-        os.makedirs(SAVE_DIR, exist_ok=True)
-        self.saved = {key: False for key in SAVE_CONFIG}
-        self.started_at = time.monotonic()
-        self.finished = False
-        self._camera_subscription = None
-        self._callbacks = {
-            "color": self.color_callback,
-            "aligned": self.aligned_callback,
-            "depth": self.depth_callback,
-            "infra1": self.infra1_callback,
-            "infra2": self.infra2_callback,
+        super().__init__("synchronized_camera_capture")
+        OUTPUT.mkdir(exist_ok=True)
+        self.color = self.depth = self.info = None
+        self.started = time.monotonic()
+        self.done = False
+        topics = {
+            "color": "/camera/color/image_raw",
+            "depth": "/camera/aligned_depth_to_color/image_raw",
         }
-
-        print("\nConnecting to ROS 2 camera topics:\n")
-        self._pending_keys = []
-        for key, enabled in SAVE_CONFIG.items():
-            print(f"  {'enabled ' if enabled else 'disabled'} {key}: {TOPICS[key]}")
-            if enabled:
-                self._pending_keys.append(key)
-        print()
-        self._current_key = None
-        self._subscribe_to_next_stream()
-        self.timer = self.create_timer(0.1, self.check_finished)
-
-    def _subscribe_to_next_stream(self):
-        if not self._pending_keys:
-            self._current_key = None
-            return
-        self._current_key = self._pending_keys.pop(0)
-        self.started_at = time.monotonic()
-        print(f"Waiting for {self._current_key}: {TOPICS[self._current_key]}")
-        self._camera_subscription = self.create_subscription(
-            Image,
-            TOPICS[self._current_key],
-            self._callbacks[self._current_key],
+        for name, topic in topics.items():
+            self.create_subscription(
+                Image, topic, lambda msg, key=name: self.receive(key, msg),
+                qos_profile_sensor_data,
+            )
+        self.create_subscription(
+            CameraInfo, "/camera/color/camera_info", self.receive_info,
             qos_profile_sensor_data,
         )
+        self.create_timer(0.1, self.check_timeout)
+        print("Waiting for synchronized RGB, aligned depth, and camera info...")
 
-    def _advance_stream(self):
-        if self._camera_subscription is not None:
-            self.destroy_subscription(self._camera_subscription)
-            self._camera_subscription = None
-        self._subscribe_to_next_stream()
+    def receive(self, name, message):
+        setattr(self, name, message)
+        self.try_capture()
 
-    def all_saved(self):
-        return all(not enabled or self.saved[key] for key, enabled in SAVE_CONFIG.items())
+    def receive_info(self, message):
+        self.info = message
+        self.try_capture()
 
-    def save_depth_images(self, frame, prefix):
-        cv2.imwrite(f"{SAVE_DIR}/{prefix}_raw.png", frame)
-        depth_vis = cv2.convertScaleAbs(frame, alpha=0.03)
-        depth_colored = cv2.applyColorMap(depth_vis, cv2.COLORMAP_JET)
-        cv2.imwrite(f"{SAVE_DIR}/{prefix}_colorized.png", depth_colored)
-
-    def color_callback(self, msg):
-        if self.saved["color"]:
+    def try_capture(self):
+        if self.done or any(item is None for item in (self.color, self.depth, self.info)):
             return
-        frame = ros_img_to_numpy(msg)
-        path = f"{SAVE_DIR}/color_rgb.png"
-        cv2.imwrite(path, frame)
-        self.saved["color"] = True
-        print(f"Saved color: {path}, shape={frame.shape}")
-
-    def depth_callback(self, msg):
-        if self.saved["depth"]:
+        difference = abs(timestamp_ns(self.color) - timestamp_ns(self.depth))
+        if difference > MAX_SYNC_NS:
             return
-        frame = ros_img_to_numpy(msg)
-        self.save_depth_images(frame, "depth")
-        self.saved["depth"] = True
-        print(f"Saved raw and colorized depth in {SAVE_DIR}")
+        self.save_capture(difference)
+        self.done = True
 
-    def aligned_callback(self, msg):
-        if self.saved["aligned"]:
-            return
-        frame = ros_img_to_numpy(msg)
-        self.save_depth_images(frame, "aligned_depth_to_color")
-        self.saved["aligned"] = True
-        print(f"Saved aligned depth in {SAVE_DIR}")
+    def save_capture(self, difference):
+        if self.color.encoding != "rgb8" or self.depth.encoding != "16UC1":
+            raise ValueError(
+                f"Expected rgb8/16UC1; got {self.color.encoding}/{self.depth.encoding}"
+            )
+        rgb = np.frombuffer(self.color.data, np.uint8).reshape(
+            self.color.height, self.color.width, 3
+        )
+        bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+        depth = np.frombuffer(self.depth.data, np.uint16).reshape(
+            self.depth.height, self.depth.width
+        )
+        z = depth.astype(np.float32) / 1000.0
 
-    def infra1_callback(self, msg):
-        if self.saved["infra1"]:
-            return
-        frame = ros_img_to_numpy(msg)
-        path = f"{SAVE_DIR}/infrared_left.png"
-        cv2.imwrite(path, frame)
-        self.saved["infra1"] = True
-        print(f"Saved left infrared: {path}, shape={frame.shape}")
+        fx, cx = self.info.k[0], self.info.k[2]
+        fy, cy = self.info.k[4], self.info.k[5]
+        u, v = np.meshgrid(np.arange(z.shape[1]), np.arange(z.shape[0]))
+        radial = np.sqrt(((u - cx) * z / fx) ** 2 +
+                         ((v - cy) * z / fy) ** 2 + z ** 2).astype(np.float32)
+        radial[z == 0] = np.nan
 
-    def infra2_callback(self, msg):
-        if self.saved["infra2"]:
-            return
-        frame = ros_img_to_numpy(msg)
-        path = f"{SAVE_DIR}/infrared_right.png"
-        cv2.imwrite(path, frame)
-        self.saved["infra2"] = True
-        print(f"Saved right infrared: {path}, shape={frame.shape}")
+        cv2.imwrite(str(OUTPUT / "color_rgb.png"), bgr)
+        cv2.imwrite(str(OUTPUT / "aligned_depth_raw.png"), depth)
+        colored = cv2.applyColorMap(
+            cv2.convertScaleAbs(depth, alpha=0.03), cv2.COLORMAP_JET
+        )
+        cv2.imwrite(str(OUTPUT / "aligned_depth_colorized.png"), colored)
+        np.save(OUTPUT / "radial_distance_m.npy", radial)
+        millimeters = np.nan_to_num(radial * 1000, nan=0)
+        millimeters = np.clip(np.rint(millimeters), 0, 65535).astype(np.uint16)
+        cv2.imwrite(str(OUTPUT / "radial_distance_mm.png"), millimeters)
 
-    def check_finished(self):
-        if self._current_key is not None and self.saved[self._current_key]:
-            self._advance_stream()
+        figure, axis = plt.subplots()
+        image = axis.imshow(radial, cmap="turbo")
+        axis.set_title("Radial distance")
+        figure.colorbar(image, ax=axis, label="meters")
+        figure.savefig(OUTPUT / "radial_distance_visualization.png", dpi=150)
+        plt.close(figure)
+        print(f"Saved synchronized capture ({difference / 1e6:.3f} ms difference)")
+        print(f"Output: {OUTPUT.resolve()}")
 
-        if self.all_saved():
-            print(f"\nAll requested frames saved in {os.path.abspath(SAVE_DIR)}")
-            for filename in sorted(os.listdir(SAVE_DIR)):
-                path = os.path.join(SAVE_DIR, filename)
-                if os.path.isfile(path):
-                    print(f"  {filename} ({os.path.getsize(path) / 1024:.1f} KB)")
-            self.finished = True
-            self.timer.cancel()
-        elif time.monotonic() - self.started_at > TIMEOUT_SECONDS:
-            print("\nTimed out waiting for camera frames:")
-            for key, enabled in SAVE_CONFIG.items():
-                if enabled:
-                    print(f"  {key}: {'saved' if self.saved[key] else 'not received'}")
-            self.finished = True
-            self.timer.cancel()
+    def check_timeout(self):
+        if not self.done and time.monotonic() - self.started > TIMEOUT:
+            print("Timed out waiting for synchronized camera data")
+            self.done = True
 
 
 def main():
     rclpy.init()
-    node = CameraFrameSaver()
+    node = CameraCapture()
     try:
-        while rclpy.ok() and not node.finished:
+        while rclpy.ok() and not node.done:
             rclpy.spin_once(node, timeout_sec=0.1)
     except KeyboardInterrupt:
         pass
