@@ -8,8 +8,12 @@ from gr00t_wbc.control.teleop.teleop_retargeting_ik import TeleopRetargetingIK
 
 
 class Controller:
-    def __init__(self):
-        self.model = instantiate_g1_robot_model()
+    def __init__(self, waist_yaw=0.0):
+        self.model = instantiate_g1_robot_model(waist_location="upper_body")
+        waist = self.model.dof_index("waist_yaw_joint")
+        self.model.pinocchio_wrapper.q0[waist] = waist_yaw
+        self.model.default_body_pose[waist] = waist_yaw
+        self.model.initial_body_pose[waist] = waist_yaw
         self.site = "right_hand_palm_center"
         self.model.supplemental_info.hand_frame_names["right"] = self.site
 
@@ -26,6 +30,7 @@ class Controller:
         )
 
         upper_body = list(self.model.get_joint_group_indices("upper_body"))
+        self.waist_yaw = upper_body.index(waist)
         self.left_arm = [
             upper_body.index(i) for i in self.model.get_joint_group_indices("left_arm")
         ]
@@ -40,6 +45,14 @@ class Controller:
         ].copy()
         self.hand = np.zeros(7)
         self.relax_left_arm(self.joints)
+
+    def neutral(self):
+        joints = self.joints.copy()
+        joints[self.waist_yaw] = 0.0
+        return joints
+
+    def turn_left(self):
+        return self.joints.copy()
 
     def relax_left_arm(self, joints):
         joints[self.left_arm] = np.array([0.0, 0.0, 0.0, 0.8, 0.0, 0.0, 0.0])

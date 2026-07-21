@@ -1,0 +1,68 @@
+{
+  "board_state": "000000000",
+  "corners_uv": [
+    [
+      146.0,
+      127.0
+    ],
+    [
+      263.0,
+      116.0
+    ],
+    [
+      288.0,
+      201.0
+    ],
+    [
+      144.0,
+      220.0
+    ]
+  ],
+  "cells": [
+    {
+      "cell": 1,
+      "label": "empty",
+      "confidence": 0.9996718168258667
+    },
+    {
+      "cell": 2,
+      "label": "empty",
+      "confidence": 0.994988739490509
+    },
+    {
+      "cell": 3,
+      "label": "empty",
+      "confidence": 0.9985505938529968
+    },
+    {
+      "cell": 4,
+      "label": "empty",
+      "confidence": 0.9938924312591553
+    },
+    {
+      "cell": 5,
+      "label": "empty",
+      "confidence": 0.9996340274810791
+    },
+    {
+      "cell": 6,
+      "label": "empty",
+      "confidence": 0.9967507123947144
+    },
+    {
+      "cell": 7,
+      "label": "empty",
+      "confidence": 0.9995526671409607
+    },
+    {
+      "cell": 8,
+      "label": "empty",
+      "confidence": 0.9959295392036438
+    },
+    {
+      "cell": 9,
+      "label": "empty",
+      "confidence": 0.9992567896842957
+    }
+  ]
+}

@@ -1,4 +1,5 @@
-"""Save one synchronized RGB/depth pair and its radial-distance map."""
+"""Save one synchronized RGB/depth pair, intrinsics, and radial-distance map."""
+import json
 import time
 from pathlib import Path
 
@@ -85,15 +86,21 @@ class CameraCapture(Node):
         radial[z == 0] = np.nan
 
         cv2.imwrite(str(OUTPUT / "color_rgb.png"), bgr)
-        cv2.imwrite(str(OUTPUT / "aligned_depth_raw.png"), depth)
-        colored = cv2.applyColorMap(
-            cv2.convertScaleAbs(depth, alpha=0.03), cv2.COLORMAP_JET
-        )
-        cv2.imwrite(str(OUTPUT / "aligned_depth_colorized.png"), colored)
         np.save(OUTPUT / "radial_distance_m.npy", radial)
-        millimeters = np.nan_to_num(radial * 1000, nan=0)
-        millimeters = np.clip(np.rint(millimeters), 0, 65535).astype(np.uint16)
-        cv2.imwrite(str(OUTPUT / "radial_distance_mm.png"), millimeters)
+        intrinsics = {
+            "width": self.info.width,
+            "height": self.info.height,
+            "frame_id": self.info.header.frame_id,
+            "distortion_model": self.info.distortion_model,
+            "distortion_coefficients": list(self.info.d),
+            "fx": fx,
+            "fy": fy,
+            "cx": cx,
+            "cy": cy,
+        }
+        (OUTPUT / "camera_intrinsics.json").write_text(
+            json.dumps(intrinsics, indent=2), encoding="utf-8"
+        )
 
         figure, axis = plt.subplots()
         image = axis.imshow(radial, cmap="turbo")

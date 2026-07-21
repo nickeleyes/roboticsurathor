@@ -266,6 +266,7 @@ ros2 launch realsense2_camera rs_launch.py \
   enable_infra2:=false \
   enable_accel:=false \
   enable_gyro:=false \
+  enable_sync:=true \
   pointcloud.enable:=false \
   align_depth.enable:=true \
   rgb_camera.profile:=424,240,15 \

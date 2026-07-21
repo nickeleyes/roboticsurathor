@@ -1,0 +1,17 @@
+{
+  "width": 424,
+  "height": 240,
+  "frame_id": "camera_color_optical_frame",
+  "distortion_model": "plumb_bob",
+  "distortion_coefficients": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "fx": 301.9141845703125,
+  "fy": 301.9892272949219,
+  "cx": 215.6597137451172,
+  "cy": 119.63994598388672
+}

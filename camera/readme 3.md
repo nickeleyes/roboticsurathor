@@ -64,6 +64,7 @@ ros2 launch realsense2_camera rs_launch.py \
   enable_infra2:=false \
   enable_accel:=false \
   enable_gyro:=false \
+  enable_sync:=true \
   pointcloud.enable:=false \
   align_depth.enable:=true \
   rgb_camera.profile:=424,240,15 \
@@ -119,6 +120,20 @@ The requested frames are saved under:
 ```text
 /root/Projects/gr00t_wbc/camera_captures/
 ```
+
+This capture contains `color_rgb.png`, `radial_distance_m.npy`,
+`radial_distance_visualization.png`, and `camera_intrinsics.json`.
+
+## Use this saved capture in simulation
+
+After board detection has produced `camera_captures/board_detection/result.json`:
+
+```bash
+python3 camera/localization.py
+python3 gr00t_wbc/control/main/teleop/run_ttt.py --interface sim
+```
+
+Press the Logitech F310 `X` button to turn the waist left and start the move.
 
 ## Stop
 
