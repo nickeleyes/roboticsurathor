@@ -1,10 +1,35 @@
 import numpy as np
+from pink.tasks import Task
 
 from gr00t_wbc.control.robot_model.instantiation.g1 import instantiate_g1_robot_model
 from gr00t_wbc.control.teleop.solver.hand.instantiation.g1_hand_ik_instantiation import (
     instantiate_g1_hand_ik_solver,
 )
 from gr00t_wbc.control.teleop.teleop_retargeting_ik import TeleopRetargetingIK
+
+
+class PalmNormalTask(Task):
+    def __init__(self, frame, cost):
+        super().__init__(cost=cost)
+        self.frame = frame
+        self.target = np.array([0.0, 0.0, -1.0])
+
+    def compute_error(self, configuration):
+        rotation = configuration.get_transform_frame_to_world(self.frame).rotation
+        normal_in_palm = rotation.T @ self.target
+        return np.cross([0.0, 1.0, 0.0], normal_in_palm)
+
+    def compute_jacobian(self, configuration):
+        rotation = configuration.get_transform_frame_to_world(self.frame).rotation
+        normal_in_palm = rotation.T @ self.target
+        skew_y = np.array([[0, 0, 1], [0, 0, 0], [-1, 0, 0]])
+        skew_n = np.array([[0, -normal_in_palm[2], normal_in_palm[1]],
+                           [normal_in_palm[2], 0, -normal_in_palm[0]],
+                           [-normal_in_palm[1], normal_in_palm[0], 0]])
+        return skew_y @ skew_n @ configuration.get_frame_jacobian(self.frame)[3:]
+
+    def __repr__(self):
+        return f"PalmNormalTask({self.frame})"
 
 
 class Controller:
@@ -26,8 +51,10 @@ class Controller:
         )
         self.solver.body_ik_solver.num_step_per_frame = 30
         self.solver.body_ik_solver.update_weights(
-            {self.site: {"position_cost": 80.0, "orientation_cost": 3.0}}
+            {self.site: {"position_cost": 40.0, "orientation_cost": np.zeros(3)}}
         )
+        self.normal_task = PalmNormalTask(self.site, 50.0)
+        self.solver.body_ik_solver.tasks["palm_normal"] = self.normal_task
 
         upper_body = list(self.model.get_joint_group_indices("upper_body"))
         self.waist_yaw = upper_body.index(waist)
@@ -59,6 +86,7 @@ class Controller:
         joints[self.left_hand] = np.zeros(7)
 
     def ik(self, position, rotation):
+        self.normal_task.target = np.asarray(rotation, dtype=float)[:, 1]
         target = np.eye(4)
         target[:3, 3] = np.array(position, dtype=float)
         target[:3, :3] = np.array(rotation, dtype=float)

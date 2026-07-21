@@ -27,6 +27,7 @@ class G1DecoupledWholeBodyPolicy(Policy):
         self.last_goal_time = time_module.monotonic()
         self.is_in_teleop_mode = False  # Track if lower body is in teleop mode
         self.preserve_upper_body_waist_pitch = False
+        self.preserve_upper_body_waist_yaw = False
         self.navigation_command = None
 
     def set_navigation_command(self, command):
@@ -54,6 +55,9 @@ class G1DecoupledWholeBodyPolicy(Policy):
         self.last_goal_time = time_module.monotonic()
         self.preserve_upper_body_waist_pitch = bool(
             goal.get("preserve_upper_body_waist_pitch", False)
+        )
+        self.preserve_upper_body_waist_yaw = bool(
+            goal.get("preserve_upper_body_waist_yaw", False)
         )
 
         upper_body_goal = {}
@@ -128,7 +132,9 @@ class G1DecoupledWholeBodyPolicy(Policy):
         upper_body_action = self.upper_body_policy.get_action(time)
         q[upper_body_indices] = upper_body_action["target_upper_body_pose"]
         waist_pitch_idx = self.robot_model.joint_to_dof_index.get("waist_pitch_joint")
+        waist_yaw_idx = self.robot_model.joint_to_dof_index.get("waist_yaw_joint")
         upper_body_waist_pitch = q[waist_pitch_idx] if waist_pitch_idx is not None else None
+        upper_body_waist_yaw = q[waist_yaw_idx] if waist_yaw_idx is not None else None
         q_arms = q[self.robot_model.get_joint_group_indices("arms")]
         base_height_command = upper_body_action.get("base_height_command", None)
         interpolated_navigate_cmd = upper_body_action.get("navigate_cmd", None)
@@ -157,6 +163,8 @@ class G1DecoupledWholeBodyPolicy(Policy):
         ]  # lower body (legs + waist)
         if self.preserve_upper_body_waist_pitch and waist_pitch_idx is not None:
             q[waist_pitch_idx] = upper_body_waist_pitch
+        if self.preserve_upper_body_waist_yaw and waist_yaw_idx is not None:
+            q[waist_yaw_idx] = upper_body_waist_yaw
 
         self.last_action = {"q": q}
 

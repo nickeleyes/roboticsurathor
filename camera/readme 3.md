@@ -133,7 +133,7 @@ python3 camera/localization.py
 python3 gr00t_wbc/control/main/teleop/run_ttt.py --interface sim
 ```
 
-Press the Logitech F310 `X` button to turn the waist left and start the move.
+Press the Logitech F310 `X` button to start the move.
 
 ## Stop
 

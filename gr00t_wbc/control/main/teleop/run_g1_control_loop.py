@@ -126,6 +126,8 @@ def main(config: ControlLoopConfig, program_action=None, startup_action=None):
                     if upper_body_cmd:
                         wbc_goal = upper_body_cmd.copy()
                         last_teleop_cmd = upper_body_cmd.copy()
+                        if "ttt_corners" in wbc_goal:
+                            env.set_ttt_markers(wbc_goal.pop("ttt_corners"))
                         if config.ik_indicator:
                             env.set_ik_indicator(upper_body_cmd)
                     # Send goal to policy

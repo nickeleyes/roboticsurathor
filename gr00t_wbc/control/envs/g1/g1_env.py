@@ -266,6 +266,10 @@ class G1Env(HumanoidEnv):
         else:
             raise NotImplementedError("IK indicators are only implemented for robocasa simulator")
 
+    def set_ttt_markers(self, corners):
+        if self.use_sim:
+            self.sim.sim_env.set_ttt_markers(corners)
+
     def set_sync_mode(self, sync_mode: bool, steps_per_action: int = 4):
         """When set to True, the simulator will wait for the action to be sent to it"""
         if self.config["SIMULATOR"] == "robocasa":

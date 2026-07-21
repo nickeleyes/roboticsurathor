@@ -50,6 +50,8 @@ class DefaultEnv:
 
         # Thread safety lock
         self.reward_lock = Lock()
+        self.ttt_marker_lock = Lock()
+        self.pending_ttt_corners = None
 
         # Unitree bridge will be initialized by the simulator
         self.unitree_bridge = None
@@ -277,6 +279,13 @@ class DefaultEnv:
         return obs
 
     def sim_step(self):
+        with self.ttt_marker_lock:
+            corners = self.pending_ttt_corners
+            self.pending_ttt_corners = None
+        if corners is not None:
+            for name, point in zip(("p1", "p3", "p7", "p9"), corners):
+                self.mj_model.geom(f"ttt_{name}").pos = point
+
         self.obs = self.prepare_obs()
         self.unitree_bridge.PublishLowState(self.obs)
         if self.unitree_bridge.joystick:
@@ -409,6 +418,10 @@ class DefaultEnv:
     def update_viewer(self):
         if self.viewer is not None:
             self.viewer.sync()
+
+    def set_ttt_markers(self, corners):
+        with self.ttt_marker_lock:
+            self.pending_ttt_corners = np.asarray(corners, dtype=float).copy()
 
     def update_viewer_camera(self):
         if self.viewer is not None:
