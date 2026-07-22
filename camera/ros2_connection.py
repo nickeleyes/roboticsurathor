@@ -7,6 +7,7 @@ import cv2
 import matplotlib
 import numpy as np
 import rclpy
+from rclpy.executors import SingleThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import CameraInfo, Image
@@ -31,6 +32,7 @@ class CameraCapture(Node):
         self.color = self.depth = self.info = None
         self.started = time.monotonic()
         self.done = False
+        self.captured = False
         topics = {
             "color": "/camera/color/image_raw",
             "depth": "/camera/aligned_depth_to_color/image_raw",
@@ -62,6 +64,7 @@ class CameraCapture(Node):
         if difference > MAX_SYNC_NS:
             return
         self.save_capture(difference)
+        self.captured = True
         self.done = True
 
     def save_capture(self, difference):
@@ -117,16 +120,28 @@ class CameraCapture(Node):
             self.done = True
 
 
-def main():
-    rclpy.init()
+def capture():
     node = CameraCapture()
+    executor = SingleThreadedExecutor(context=node.context)
+    executor.add_node(node)
     try:
         while rclpy.ok() and not node.done:
-            rclpy.spin_once(node, timeout_sec=0.1)
+            executor.spin_once(timeout_sec=0.1)
+    finally:
+        executor.remove_node(node)
+        executor.shutdown()
+        node.destroy_node()
+    if not node.captured:
+        raise TimeoutError("Timed out waiting for synchronized camera data")
+
+
+def main():
+    rclpy.init()
+    try:
+        capture()
     except KeyboardInterrupt:
         pass
     finally:
-        node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()
 

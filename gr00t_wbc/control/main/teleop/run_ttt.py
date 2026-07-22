@@ -1,8 +1,5 @@
-import json
 import threading
 import time
-from pathlib import Path
-
 import numpy as np
 from scipy.spatial.transform import Rotation
 
@@ -13,20 +10,13 @@ from gr00t_wbc.control.main.teleop.configs.configs import ControlLoopConfig
 from gr00t_wbc.control.main.teleop.run_g1_control_loop import main as run_g1_control_loop
 from gr00t_wbc.control.main.teleop.ttt_stuff.controller import Controller
 from gr00t_wbc.control.main.teleop.ttt_stuff.engine import move_code
+from gr00t_wbc.control.main.teleop.ttt_stuff.localization import localize
 from gr00t_wbc.control.main.teleop.ttt_stuff.planner import (
     BoardPlanner,
 )
+from gr00t_wbc.control.main.teleop.ttt_stuff.ros2capture import capture
+from gr00t_wbc.control.main.teleop.ttt_stuff.vision import detect
 from gr00t_wbc.control.utils.ros_utils import ROSMsgPublisher, ROSMsgSubscriber
-
-LOCALIZATION = Path(__file__).resolve().parents[4] / "camera_captures/board_localization.json"
-WAIST_YAW = np.deg2rad(20.0)
-WAIST_DURATION = 5.0
-TRACK_PERIOD = 0.2
-CORNER_BLEND = 0.12
-JOINT_BLEND = 0.18
-COMMAND_HORIZON = 1.0
-MAX_LINEAR_SPEED = 0.15
-MAX_ANGULAR_SPEED = 0.5
 
 
 def main(config: ControlLoopConfig):
@@ -34,7 +24,7 @@ def main(config: ControlLoopConfig):
         raise ValueError("This saved-camera run_ttt path is simulation-only")
     config.enable_waist = True
     planner = BoardPlanner()
-    controller = Controller(WAIST_YAW)
+    controller = Controller(np.deg2rad(20.0))
     publisher = ROSMsgPublisher(CONTROL_GOAL_TOPIC)
     state_subscriber = ROSMsgSubscriber(STATE_TOPIC_NAME)
     move_thread = None
@@ -60,7 +50,8 @@ def main(config: ControlLoopConfig):
 
     def run_move():
         nonlocal board_world
-        data = json.loads(LOCALIZATION.read_text())
+        frame, radial, intrinsics = capture()
+        data = localize(detect(frame), radial, intrinsics)
         board = data["board_state"]
         corners = np.array([
             data["corner_cell_centers"][name] for name in ("p1", "p3", "p7", "p9")
@@ -71,12 +62,11 @@ def main(config: ControlLoopConfig):
             return
         before = np.asarray(state["floating_base_pose"], dtype=float)
         rotation_before = Rotation.from_quat(before[[4, 5, 6, 3]])
-        if board_world is None:
-            board_world = rotation_before.apply(corners) + before[:3]
+        board_world = rotation_before.apply(corners) + before[:3]
 
-        print(f"Turning waist {np.degrees(WAIST_YAW):g} degrees left", flush=True)
-        send(controller.turn_left(), WAIST_DURATION)
-        time.sleep(WAIST_DURATION)
+        print("Turning waist 20 degrees left", flush=True)
+        send(controller.turn_left(), 5.0)
+        time.sleep(5.0)
         state_after, corners = live_corners()
         after = np.asarray(state_after["floating_base_pose"], dtype=float)
         rotation_after = Rotation.from_quat(after[[4, 5, 6, 3]])
@@ -109,28 +99,32 @@ def main(config: ControlLoopConfig):
             deadline = None
             while deadline is None or time.monotonic() < deadline:
                 state, raw_corners = live_corners()
-                smooth_corners += CORNER_BLEND * (raw_corners - smooth_corners)
+                smooth_corners += 0.12 * (raw_corners - smooth_corners)
                 velocity = np.asarray(state["floating_base_vel"], dtype=float)
-                if (np.linalg.norm(velocity[:3]) > MAX_LINEAR_SPEED or
-                        np.linalg.norm(velocity[3:]) > MAX_ANGULAR_SPEED):
+                if (np.linalg.norm(velocity[:3]) > 0.15 or
+                        np.linalg.norm(velocity[3:]) > 0.5):
                     print("Unsafe pelvis speed; arm move cancelled", flush=True)
-                    send(controller.neutral(), WAIST_DURATION, smooth_corners)
+                    send(controller.neutral(), 5.0, smooth_corners)
                     return
                 live_plan = planner.plan_move(board, move, smooth_corners)
                 target = live_plan[active_pose]
                 ik_joints = controller.ik(target[1], target[2])
-                smooth_joints += JOINT_BLEND * (ik_joints - smooth_joints)
+                smooth_joints += 0.18 * (ik_joints - smooth_joints)
                 if deadline is None:
                     deadline = time.monotonic() + duration
-                send(smooth_joints, COMMAND_HORIZON, smooth_corners)
-                time.sleep(TRACK_PERIOD)
+                send(smooth_joints, 1.0, smooth_corners)
+                time.sleep(0.2)
         print("Returning waist to neutral", flush=True)
-        finish = time.monotonic() + WAIST_DURATION
+        neutral_joints = controller.neutral()
+        finish = time.monotonic() + 5.0
         while time.monotonic() < finish:
             _, raw_corners = live_corners()
-            smooth_corners += CORNER_BLEND * (raw_corners - smooth_corners)
-            send(controller.neutral(), COMMAND_HORIZON, smooth_corners)
-            time.sleep(TRACK_PERIOD)
+            smooth_corners += 0.12 * (raw_corners - smooth_corners)
+            smooth_joints += 0.12 * (neutral_joints - smooth_joints)
+            send(smooth_joints, 1.0, smooth_corners)
+            time.sleep(0.2)
+        send(neutral_joints, 2.0, smooth_corners)
+        time.sleep(2.0)
         print("Tic-tac-toe move complete", flush=True)
 
     def start_move():

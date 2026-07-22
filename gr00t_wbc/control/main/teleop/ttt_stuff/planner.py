@@ -8,7 +8,7 @@ MODEL_DATA = Path(__file__).resolve().parents[3] / "robot_model/model_data"
 TABLE_XML = MODEL_DATA / "tictactoe_table.xml"
 G1_XML = MODEL_DATA / "g1/g1_29dof_with_hand.xml"
 
-HEIGHTS = {"high": 0.21, "close": 0.08, "grab": 0.02}
+HEIGHTS = {"high": 0.21, "close": 0.18, "grab": 0.07}
 
 
 def unit(v):
@@ -77,9 +77,9 @@ class BoardPlanner:
         points[goal] += np.array([0.0, 0.0, 0.1])
         steps = [
             ("pos5", "high"),
-            ("gripper", "open"), (piece, "close"), (piece, "grab"),
-            ("gripper", "close"), (piece, "close"),
-            (goal, "close"), (goal, "grab"), ("gripper", "open"), (goal, "close"),
+            (piece, "close"), (piece, "grab"),
+            (piece, "close"),
+            (goal, "close"), (goal, "grab"), (goal, "close"),
             ("pos5", "high"),
         ]
         return [step if step[0] == "gripper" else self.pose(points, normal, rotation, *step) for step in steps]

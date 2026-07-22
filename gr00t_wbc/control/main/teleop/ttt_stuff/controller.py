@@ -70,7 +70,8 @@ class Controller:
         self.joints = self.model.default_body_pose[
             self.model.get_joint_group_indices("upper_body")
         ].copy()
-        self.hand = np.zeros(7)
+        self.hand = np.array([1.45, 1.65, 1.45, 1.65, 0.0, -0.9, -1.6])
+        self.joints[self.right_hand] = self.hand
         self.relax_left_arm(self.joints)
 
     def neutral(self):

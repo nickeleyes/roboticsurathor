@@ -7,13 +7,13 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parent.parent
 CAPTURE = ROOT / "camera_captures"
-OUTPUT = CAPTURE / "board_localization.json"
 
 
-def main():
-    detection = json.loads((CAPTURE / "board_detection/result.json").read_text())
-    intrinsics = json.loads((CAPTURE / "camera_intrinsics.json").read_text())
-    radial = np.load(CAPTURE / "radial_distance_m.npy")
+def localize(detection=None, capture=CAPTURE):
+    if detection is None:
+        detection = json.loads((capture / "board_detection/result.json").read_text())
+    intrinsics = json.loads((capture / "camera_intrinsics.json").read_text())
+    radial = np.load(capture / "radial_distance_m.npy")
     if radial.shape != (intrinsics["height"], intrinsics["width"]):
         raise ValueError("Radial map and camera intrinsics have different dimensions")
     if any(abs(value) > 1e-9 for value in intrinsics["distortion_coefficients"]):
@@ -83,10 +83,16 @@ def main():
         "measured_pelvis_xyz_m": dict(zip(("p1", "p3", "p7", "p9"), measured.tolist())),
         "corner_cell_centers": dict(zip(("p1", "p3", "p7", "p9"), regularized.tolist())),
     }
-    OUTPUT.write_text(json.dumps(result, indent=2), encoding="utf-8")
-    print(f"Saved {OUTPUT}")
+    output = capture / "board_localization.json"
+    output.write_text(json.dumps(result, indent=2), encoding="utf-8")
+    print(f"Saved {output}")
     for name, point in result["corner_cell_centers"].items():
         print(f"{name}: {np.round(point, 4)} m")
+    return result
+
+
+def main():
+    localize()
 
 
 if __name__ == "__main__":

@@ -124,16 +124,26 @@ The requested frames are saved under:
 This capture contains `color_rgb.png`, `radial_distance_m.npy`,
 `radial_distance_visualization.png`, and `camera_intrinsics.json`.
 
-## Use this saved capture in simulation
+## Run live camera vision into the simulation
 
-After board detection has produced `camera_captures/board_detection/result.json`:
+On the Thor host, temporarily authorize the container's root user to use X11:
 
 ```bash
-python3 camera/localization.py
+xhost +si:localuser:root
+```
+
+Then, inside the GR00T container:
+
+```bash
+export DISPLAY=:1
 python3 gr00t_wbc/control/main/teleop/run_ttt.py --interface sim
 ```
 
-Press the Logitech F310 `X` button to start the move.
+Press the Logitech F310 `X` button. It captures synchronized RGB and depth,
+detects the board, localizes it, plans the move, and moves only the simulated robot.
+The RealSense publisher in Terminal 1 must still be running.
+
+The `xhost` permission is temporary and normally ends with the current graphical login session.
 
 ## Stop
 

@@ -79,25 +79,19 @@ def load_model(path):
     return model, names, transform
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--image", type=Path, default=DEFAULT_IMAGE)
-    parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
-    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
-    args = parser.parse_args()
-
-    frame = cv2.imread(str(args.image))
+def detect(image=DEFAULT_IMAGE, model_path=DEFAULT_MODEL, output=DEFAULT_OUTPUT):
+    frame = cv2.imread(str(image))
     if frame is None:
-        raise FileNotFoundError(f"Could not read {args.image}")
+        raise FileNotFoundError(f"Could not read {image}")
     corners = find_board_corners(frame)
     if corners is None:
         raise RuntimeError("No board-paper corners detected")
     board_image = warp_board(frame, corners)
     x, y, width, height = GRID_CROP
     grid = board_image[y:y + height, x:x + width]
-    model, names, transform = load_model(args.model)
-    args.output.mkdir(parents=True, exist_ok=True)
-    squares_dir = args.output / "squares"
+    model, names, transform = load_model(model_path)
+    output.mkdir(parents=True, exist_ok=True)
+    squares_dir = output / "squares"
     squares_dir.mkdir(exist_ok=True)
 
     predictions, codes = [], []
@@ -127,13 +121,23 @@ def main():
                     0.5, (0, 0, 255), 1, cv2.LINE_AA)
 
     board_state = "".join(codes)
-    cv2.imwrite(str(args.output / "corners_detected.png"), annotated)
-    cv2.imwrite(str(args.output / "3x3board.png"), grid)
-    cv2.imwrite(str(args.output / "3x3board_detected.png"), annotated_grid)
+    cv2.imwrite(str(output / "corners_detected.png"), annotated)
+    cv2.imwrite(str(output / "3x3board.png"), grid)
+    cv2.imwrite(str(output / "3x3board_detected.png"), annotated_grid)
     result = {"board_state": board_state, "corners_uv": corners.tolist(), "cells": predictions}
-    (args.output / "result.json").write_text(json.dumps(result, indent=2))
+    (output / "result.json").write_text(json.dumps(result, indent=2))
     print(f"Board state: {board_state} (0=empty, 1=green, 2=white)")
-    print(f"Output: {args.output.resolve()}")
+    print(f"Output: {output.resolve()}")
+    return result
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--image", type=Path, default=DEFAULT_IMAGE)
+    parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
+    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    args = parser.parse_args()
+    detect(args.image, args.model, args.output)
 
 
 if __name__ == "__main__":
