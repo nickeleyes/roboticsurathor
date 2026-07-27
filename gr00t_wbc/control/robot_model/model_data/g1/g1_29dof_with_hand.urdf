@@ -1297,6 +1297,13 @@
     <child link="right_hand_palm_center"/>
   </joint>
   <link name="right_hand_palm_center"/>
+  <joint name="right_hand_grip_center_joint" type="fixed">
+    <!-- Palm-local axes: +X forward, +Y palm-normal/down, +Z left. -->
+    <origin xyz="0.085 0.07 0.03" rpy="0 0 0"/>
+    <parent link="right_hand_palm_center"/>
+    <child link="right_hand_grip_center"/>
+  </joint>
+  <link name="right_hand_grip_center"/>
   <joint name="right_hand_thumb_0_joint" type="revolute">
     <origin xyz="0.0255 0 0" rpy="0 0 0"/>
     <axis xyz="0 1 0"/>

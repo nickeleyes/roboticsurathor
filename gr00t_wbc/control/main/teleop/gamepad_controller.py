@@ -17,7 +17,7 @@ class GamepadController:
     }
 
     def __init__(self):
-        self.path = "/dev/input/event7"
+        self.path = "/dev/input/event2"
         self.file = open(self.path, "rb", buffering=0)
         self.deadzone = 0.08
         self.response_exponent = 3.0

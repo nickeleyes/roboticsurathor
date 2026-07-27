@@ -9,6 +9,7 @@ import mujoco
 import mujoco.viewer
 import numpy as np
 import rclpy
+from scipy.spatial.transform import Rotation
 from unitree_sdk2py.core.channel import ChannelFactoryInitialize
 import yaml
 
@@ -284,7 +285,37 @@ class DefaultEnv:
             self.pending_ttt_corners = None
         if corners is not None:
             for name, point in zip(("p1", "p3", "p7", "p9"), corners):
-                self.mj_model.geom(f"ttt_{name}").pos = point
+                marker = self.mj_model.geom(f"ttt_{name}")
+                marker.pos = point
+                marker.rgba[3] = 1.0
+
+            p1, p3, p7, p9 = corners
+            x_vector = ((p3 - p1) + (p9 - p7)) / 2
+            y_vector = ((p7 - p1) + (p9 - p3)) / 2
+            x_pitch = np.linalg.norm(x_vector) / 2
+            y_pitch = np.linalg.norm(y_vector) / 2
+            x_axis = x_vector / np.linalg.norm(x_vector)
+            y_axis = y_vector - x_axis * np.dot(y_vector, x_axis)
+            y_axis /= np.linalg.norm(y_axis)
+            z_axis = np.cross(x_axis, y_axis)
+            rotation = np.column_stack((x_axis, y_axis, z_axis))
+            xyzw = Rotation.from_matrix(rotation).as_quat()
+            quaternion = xyzw[[3, 0, 1, 2]]
+
+            for row in range(3):
+                for column in range(3):
+                    u, v = column / 2, row / 2
+                    center = (
+                        (1 - u) * (1 - v) * p1
+                        + u * (1 - v) * p3
+                        + (1 - u) * v * p7
+                        + u * v * p9
+                    )
+                    cell = self.mj_model.geom(f"ttt_cell_{1 + 3 * row + column}")
+                    cell.pos = center - z_axis * 0.003
+                    cell.quat = quaternion
+                    cell.size = [0.44 * x_pitch, 0.44 * y_pitch, 0.002]
+                    cell.rgba[3] = 0.85
 
         self.obs = self.prepare_obs()
         self.unitree_bridge.PublishLowState(self.obs)

@@ -113,7 +113,7 @@ Run the camera subscriber:
 
 ```bash
 python3 camera/ros2_connection.py
-```
+```xhost +si:localuser:root
 
 The requested frames are saved under:
 

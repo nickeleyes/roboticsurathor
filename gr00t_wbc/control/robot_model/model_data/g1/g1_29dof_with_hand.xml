@@ -89,14 +89,32 @@
         rgba="0 0 1 1" /> -->
       <geom type="mesh" rgba="0.7 0.7 0.7 1" mesh="pelvis_contour_link" />
       <site name="head_camera" pos="0.056 0.0 0.504" euler="0 -0.8 -1.57" />
-      <geom name="ttt_p1" type="sphere" pos="0.4919 0.0744 -0.0298" size="0.04"
-        rgba="1 0 0 1" contype="0" conaffinity="0" density="0" />
-      <geom name="ttt_p3" type="sphere" pos="0.4906 -0.0542 -0.0298" size="0.04"
-        rgba="0 1 0 1" contype="0" conaffinity="0" density="0" />
-      <geom name="ttt_p7" type="sphere" pos="0.3636 0.0757 -0.0298" size="0.04"
-        rgba="0.1 0.4 1 1" contype="0" conaffinity="0" density="0" />
-      <geom name="ttt_p9" type="sphere" pos="0.3623 -0.0528 -0.0298" size="0.04"
-        rgba="1 1 0 1" contype="0" conaffinity="0" density="0" />
+      <geom name="ttt_p1" type="sphere" pos="0.4919 0.0744 -0.0298" size="0.012"
+        rgba="1 0 0 0" contype="0" conaffinity="0" density="0" />
+      <geom name="ttt_p3" type="sphere" pos="0.4906 -0.0542 -0.0298" size="0.012"
+        rgba="0 1 0 0" contype="0" conaffinity="0" density="0" />
+      <geom name="ttt_p7" type="sphere" pos="0.3636 0.0757 -0.0298" size="0.012"
+        rgba="0.1 0.4 1 0" contype="0" conaffinity="0" density="0" />
+      <geom name="ttt_p9" type="sphere" pos="0.3623 -0.0528 -0.0298" size="0.012"
+        rgba="1 1 0 0" contype="0" conaffinity="0" density="0" />
+      <geom name="ttt_cell_1" type="box" size="0.025 0.025 0.002"
+        rgba="0.1 0.1 0.1 0" contype="0" conaffinity="0" density="0" />
+      <geom name="ttt_cell_2" type="box" size="0.025 0.025 0.002"
+        rgba="0.85 0.85 0.85 0" contype="0" conaffinity="0" density="0" />
+      <geom name="ttt_cell_3" type="box" size="0.025 0.025 0.002"
+        rgba="0.1 0.1 0.1 0" contype="0" conaffinity="0" density="0" />
+      <geom name="ttt_cell_4" type="box" size="0.025 0.025 0.002"
+        rgba="0.85 0.85 0.85 0" contype="0" conaffinity="0" density="0" />
+      <geom name="ttt_cell_5" type="box" size="0.025 0.025 0.002"
+        rgba="0.1 0.1 0.1 0" contype="0" conaffinity="0" density="0" />
+      <geom name="ttt_cell_6" type="box" size="0.025 0.025 0.002"
+        rgba="0.85 0.85 0.85 0" contype="0" conaffinity="0" density="0" />
+      <geom name="ttt_cell_7" type="box" size="0.025 0.025 0.002"
+        rgba="0.1 0.1 0.1 0" contype="0" conaffinity="0" density="0" />
+      <geom name="ttt_cell_8" type="box" size="0.025 0.025 0.002"
+        rgba="0.85 0.85 0.85 0" contype="0" conaffinity="0" density="0" />
+      <geom name="ttt_cell_9" type="box" size="0.025 0.025 0.002"
+        rgba="0.1 0.1 0.1 0" contype="0" conaffinity="0" density="0" />
       <body name="left_hip_pitch_link" pos="0 0.064452 -0.1027">
         <inertial pos="0.002741 0.047791 -0.02606" quat="0.954862 0.293964 0.0302556 0.030122"
           mass="1.35" diaginertia="0.00181517 0.00153422 0.00116212" />
@@ -475,6 +493,10 @@
                             mesh="right_hand_palm_link" />
                           <geom pos="0.0415 -0.003 0" quat="1 0 0 0" type="mesh"
                             rgba="0.7 0.7 0.7 1" mesh="right_hand_palm_link" />
+                          <!-- right_hand_palm_center plus the tuned grip offset:
+                               +8.5 cm forward, +7 cm down, +3 cm left. -->
+                          <site name="right_hand_grip_center" pos="0.13864634836 0.06750869656 0.02941828907"
+                            size="0.012" rgba="1 0 1 1" type="sphere" />
                           <!-- <geom type="sphere" size="0.07" pos="0.05364634836 -0.00249130344 -0.00058171093" contype="0" conaffinity="0"
                             group="1" density="0" rgba="1 0 0 1" /> -->
                           <body name="right_hand_thumb_0_link" pos="0.067 -0.003 0">

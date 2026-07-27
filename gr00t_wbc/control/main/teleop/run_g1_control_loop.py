@@ -15,7 +15,6 @@ from gr00t_wbc.control.main.constants import (
     STATE_TOPIC_NAME,
 )
 from gr00t_wbc.control.main.teleop.configs.configs import ControlLoopConfig
-from gr00t_wbc.control.main.teleop.gamepad_controller import GamepadController
 from gr00t_wbc.control.policy.wbc_policy_factory import get_wbc_policy
 from gr00t_wbc.control.robot_model.instantiation.g1 import (
     instantiate_g1_robot_model,
@@ -35,6 +34,15 @@ from gr00t_wbc.control.utils.ros_utils import (
 from gr00t_wbc.control.utils.telemetry import Telemetry
 
 CONTROL_NODE_NAME = "ControlPolicy"
+
+
+class ProgramActionListener:
+    def __init__(self, action):
+        self.action = action
+
+    def handle_keyboard_button(self, key):
+        if key == "p" and self.action is not None:
+            self.action()
 
 
 def main(config: ControlLoopConfig, program_action=None, startup_action=None):
@@ -68,10 +76,9 @@ def main(config: ControlLoopConfig, program_action=None, startup_action=None):
         env.start_simulator()
 
     wbc_policy = get_wbc_policy("g1", robot_model, wbc_config, config.upper_body_joint_speed)
-    controller = GamepadController()
-
     keyboard_listener_pub = KeyboardListenerPublisher()
     keyboard_estop = KeyboardEStop()
+    program_action_listener = ProgramActionListener(program_action)
     if config.keyboard_dispatcher_type == "raw":
         dispatcher = KeyboardDispatcher()
     elif config.keyboard_dispatcher_type == "ros":
@@ -84,6 +91,7 @@ def main(config: ControlLoopConfig, program_action=None, startup_action=None):
     dispatcher.register(wbc_policy)
     dispatcher.register(keyboard_listener_pub)
     dispatcher.register(keyboard_estop)
+    dispatcher.register(program_action_listener)
     dispatcher.start()
 
     rate = node.create_rate(config.control_frequency)
@@ -94,6 +102,7 @@ def main(config: ControlLoopConfig, program_action=None, startup_action=None):
         startup_action()
 
     last_teleop_cmd = None
+    last_policy_key_event = None
     try:
         while ros_manager.ok():
             t_start = time.monotonic()
@@ -111,14 +120,6 @@ def main(config: ControlLoopConfig, program_action=None, startup_action=None):
                 # Measure policy setup time
                 with telemetry.timer("policy_setup"):
                     upper_body_cmd = upper_body_policy_subscriber.get_msg()
-                    controller_velocity = controller.get_velocity()
-                    wbc_policy.set_navigation_command(controller_velocity)
-                    while key := controller.get_key():
-                        if key == "program":
-                            if program_action is not None:
-                                program_action()
-                        else:
-                            dispatcher.handle_key(key)
 
                     t_now = time.monotonic()
 
@@ -126,6 +127,14 @@ def main(config: ControlLoopConfig, program_action=None, startup_action=None):
                     if upper_body_cmd:
                         wbc_goal = upper_body_cmd.copy()
                         last_teleop_cmd = upper_body_cmd.copy()
+                        policy_key = wbc_goal.pop("policy_key", None)
+                        policy_key_event = wbc_goal.pop("policy_key_event", None)
+                        if (
+                            policy_key is not None
+                            and policy_key_event != last_policy_key_event
+                        ):
+                            dispatcher.handle_key(policy_key)
+                            last_policy_key_event = policy_key_event
                         if "ttt_corners" in wbc_goal:
                             env.set_ttt_markers(wbc_goal.pop("ttt_corners"))
                         if config.ik_indicator:
@@ -242,7 +251,6 @@ def main(config: ControlLoopConfig, program_action=None, startup_action=None):
         print("Cleaning up...")
         # the order of the following is important
         dispatcher.stop()
-        controller.close()
         ros_manager.shutdown()
         env.close()
 

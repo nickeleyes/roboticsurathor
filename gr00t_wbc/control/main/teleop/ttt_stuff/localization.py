@@ -4,11 +4,6 @@ import numpy as np
 
 
 def localize(detection, radial, intrinsics):
-    if radial.shape != (intrinsics["height"], intrinsics["width"]):
-        raise ValueError("Radial map and camera intrinsics have different dimensions")
-    if any(abs(value) > 1e-9 for value in intrinsics["distortion_coefficients"]):
-        raise ValueError("Board localization expects rectified camera images")
-
     paper = np.asarray(detection["corners_uv"], np.float32)
     canonical = np.array([[0, 0], [999, 0], [999, 773], [0, 773]], np.float32)
     inverse = np.linalg.inv(cv2.getPerspectiveTransform(paper, canonical))
