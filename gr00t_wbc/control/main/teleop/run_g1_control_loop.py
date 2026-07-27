@@ -37,15 +37,23 @@ CONTROL_NODE_NAME = "ControlPolicy"
 
 
 class ProgramActionListener:
-    def __init__(self, action):
+    def __init__(self, action, continue_action):
         self.action = action
+        self.continue_action = continue_action
 
     def handle_keyboard_button(self, key):
         if key == "p" and self.action is not None:
             self.action()
+        elif key in ("space", " ") and self.continue_action is not None:
+            self.continue_action()
 
 
-def main(config: ControlLoopConfig, program_action=None, startup_action=None):
+def main(
+    config,
+    program_action=None,
+    program_continue_action=None,
+    startup_action=None,
+):
     ros_manager = ROSManager(node_name=CONTROL_NODE_NAME)
     node = ros_manager.node
 
@@ -78,7 +86,10 @@ def main(config: ControlLoopConfig, program_action=None, startup_action=None):
     wbc_policy = get_wbc_policy("g1", robot_model, wbc_config, config.upper_body_joint_speed)
     keyboard_listener_pub = KeyboardListenerPublisher()
     keyboard_estop = KeyboardEStop()
-    program_action_listener = ProgramActionListener(program_action)
+    program_action_listener = ProgramActionListener(
+        program_action,
+        program_continue_action,
+    )
     if config.keyboard_dispatcher_type == "raw":
         dispatcher = KeyboardDispatcher()
     elif config.keyboard_dispatcher_type == "ros":
@@ -98,11 +109,9 @@ def main(config: ControlLoopConfig, program_action=None, startup_action=None):
 
     upper_body_policy_subscriber = ROSMsgSubscriber(CONTROL_GOAL_TOPIC)
 
-    if startup_action is not None:
-        startup_action()
-
     last_teleop_cmd = None
     last_policy_key_event = None
+    startup_action_pending = startup_action is not None
     try:
         while ros_manager.ok():
             t_start = time.monotonic()
@@ -116,6 +125,10 @@ def main(config: ControlLoopConfig, program_action=None, startup_action=None):
                 with telemetry.timer("observe"):
                     obs = env.observe()
                     wbc_policy.set_observation(obs)
+
+                if startup_action_pending:
+                    startup_action()
+                    startup_action_pending = False
 
                 # Measure policy setup time
                 with telemetry.timer("policy_setup"):
@@ -237,13 +250,13 @@ def main(config: ControlLoopConfig, program_action=None, startup_action=None):
 
             rate.sleep()
 
-            # Log timing information every 100 iterations (roughly every 2 seconds at 50Hz)
-            if config.verbose_timing:
-                # When verbose timing is enabled, always show timing
-                telemetry.log_timing_info(context="G1 Control Loop", threshold=0.0)
-            elif (end_time - t_start) > (1 / config.control_frequency) and not config.sim_sync_mode:
-                # Only show timing when loop is slow and verbose_timing is disabled
-                telemetry.log_timing_info(context="G1 Control Loop Missed", threshold=0.001)
+            # # Log timing information every 100 iterations (roughly every 2 seconds at 50Hz)
+            # if config.verbose_timing:
+            #     # When verbose timing is enabled, always show timing
+            #     telemetry.log_timing_info(context="G1 Control Loop", threshold=0.0)
+            # elif (end_time - t_start) > (1 / config.control_frequency) and not config.sim_sync_mode:
+            #     # Only show timing when loop is slow and verbose_timing is disabled
+            #     telemetry.log_timing_info(context="G1 Control Loop Missed", threshold=0.001)
 
     except ros_manager.exceptions() as e:
         print(f"ROSManager interrupted by user: {e}")

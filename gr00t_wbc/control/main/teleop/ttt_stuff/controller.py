@@ -8,8 +8,21 @@ from gr00t_wbc.control.teleop.solver.hand.instantiation.g1_hand_ik_instantiation
 from gr00t_wbc.control.teleop.teleop_retargeting_ik import TeleopRetargetingIK
 
 FIXED_GRIP_POSE = np.array([0.0, 0.0, 0.7, 0.8, -0.45, -0.45, -0.7])
-SIDE_T_RIGHT_ARM = np.array([0.0, -np.pi / 2, 0.0, 0.0, 0.0, 0.0, 0.0])
-LEFT_ARM_AT_SIDE = np.array([0.0, 0.2, 0.0, 0.0, 0.0, 0.0, 0.0])
+SIDE_T_RIGHT_ARM = np.array(
+    [0.0, -np.pi / 2, 0.0, np.pi / 2, 0.0, 0.0, 0.0]
+)
+SIDE_T_BENT_RIGHT_ARM = np.array(
+    [0.0, -np.pi / 2, 0.0, 0.0, 0.0, 0.0, 0.0]
+)
+FRONT_REACH_RIGHT_ARM = np.array(
+    [-np.pi / 2, -0.2, 0.0, 0.0, 0.0, 0.0, 0.0]
+)
+LEFT_ARM_AT_SIDE = np.array(
+    [0.0, np.deg2rad(30.0), 0.0, np.pi / 2, 0.0, 0.0, 0.0]
+)
+RIGHT_ARM_AT_SIDE = np.array(
+    [0.0, np.deg2rad(-30.0), 0.0, np.pi / 2, 0.0, 0.0, 0.0]
+)
 
 
 class PalmNormalTask(Task):
@@ -87,10 +100,35 @@ class Controller:
     def neutral(self):
         return self.joints.copy()
 
+    def both_arms_down_pose(self, waist_yaw=0.0):
+        joints = self.joints.copy()
+        joints[self.waist_yaw] = waist_yaw
+        joints[self.left_arm] = LEFT_ARM_AT_SIDE
+        joints[self.right_arm] = RIGHT_ARM_AT_SIDE
+        joints[self.left_hand] = np.zeros(7)
+        joints[self.right_hand] = FIXED_GRIP_POSE
+        return joints
+
     def side_t_pose(self, waist_yaw=0.0):
         joints = self.joints.copy()
         joints[self.waist_yaw] = waist_yaw
         joints[self.right_arm] = SIDE_T_RIGHT_ARM
+        joints[self.right_hand] = FIXED_GRIP_POSE
+        self.relax_left_arm(joints)
+        return joints
+
+    def front_reach_pose(self, waist_yaw=0.0):
+        joints = self.joints.copy()
+        joints[self.waist_yaw] = waist_yaw
+        joints[self.right_arm] = FRONT_REACH_RIGHT_ARM
+        joints[self.right_hand] = FIXED_GRIP_POSE
+        self.relax_left_arm(joints)
+        return joints
+
+    def side_t_bent_pose(self, waist_yaw=0.0):
+        joints = self.joints.copy()
+        joints[self.waist_yaw] = waist_yaw
+        joints[self.right_arm] = SIDE_T_BENT_RIGHT_ARM
         joints[self.right_hand] = FIXED_GRIP_POSE
         self.relax_left_arm(joints)
         return joints
