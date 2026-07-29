@@ -77,6 +77,32 @@
   </asset>
 
   <worldbody>
+    <body name="ttt_reference_p1_body" mocap="true" pos="0 0 0">
+      <geom name="ttt_reference_p1" type="sphere" size="0.012"
+        rgba="0.85 0.85 0.85 0" contype="0" conaffinity="0" density="0" />
+    </body>
+    <body name="ttt_reference_p3_body" mocap="true" pos="0 0 0">
+      <geom name="ttt_reference_p3" type="sphere" size="0.012"
+        rgba="0.85 0.85 0.85 0" contype="0" conaffinity="0" density="0" />
+    </body>
+    <body name="ttt_reference_p7_body" mocap="true" pos="0 0 0">
+      <geom name="ttt_reference_p7" type="sphere" size="0.012"
+        rgba="0.85 0.85 0.85 0" contype="0" conaffinity="0" density="0" />
+    </body>
+    <body name="ttt_reference_p9_body" mocap="true" pos="0 0 0">
+      <geom name="ttt_reference_p9" type="sphere" size="0.012"
+        rgba="0.85 0.85 0.85 0" contype="0" conaffinity="0" density="0" />
+    </body>
+    <body name="ttt_ik_target_body" mocap="true" pos="0 0 0">
+      <geom name="ttt_ik_target" type="sphere" size="0.012"
+        rgba="1 0 0 0" contype="0" conaffinity="0" density="0" />
+    </body>
+    <body name="ttt_left_foot_anchor" mocap="true" pos="0 0 0">
+      <site size="0.001" rgba="0 0 0 0" />
+    </body>
+    <body name="ttt_right_foot_anchor" mocap="true" pos="0 0 0">
+      <site size="0.001" rgba="0 0 0 0" />
+    </body>
     <body name="pelvis" pos="0 0 0.793">
       <inertial pos="0 0 -0.07605" quat="1 0 -0.000399148 0" mass="3.813"
         diaginertia="0.010549 0.0093089 0.0079184" />
@@ -89,32 +115,6 @@
         rgba="0 0 1 1" /> -->
       <geom type="mesh" rgba="0.7 0.7 0.7 1" mesh="pelvis_contour_link" />
       <site name="head_camera" pos="0.056 0.0 0.504" euler="0 -0.8 -1.57" />
-      <geom name="ttt_p1" type="sphere" pos="0.4919 0.0744 -0.0298" size="0.012"
-        rgba="1 0 0 0" contype="0" conaffinity="0" density="0" />
-      <geom name="ttt_p3" type="sphere" pos="0.4906 -0.0542 -0.0298" size="0.012"
-        rgba="0 1 0 0" contype="0" conaffinity="0" density="0" />
-      <geom name="ttt_p7" type="sphere" pos="0.3636 0.0757 -0.0298" size="0.012"
-        rgba="0.1 0.4 1 0" contype="0" conaffinity="0" density="0" />
-      <geom name="ttt_p9" type="sphere" pos="0.3623 -0.0528 -0.0298" size="0.012"
-        rgba="1 1 0 0" contype="0" conaffinity="0" density="0" />
-      <geom name="ttt_cell_1" type="box" size="0.025 0.025 0.002"
-        rgba="0.1 0.1 0.1 0" contype="0" conaffinity="0" density="0" />
-      <geom name="ttt_cell_2" type="box" size="0.025 0.025 0.002"
-        rgba="0.85 0.85 0.85 0" contype="0" conaffinity="0" density="0" />
-      <geom name="ttt_cell_3" type="box" size="0.025 0.025 0.002"
-        rgba="0.1 0.1 0.1 0" contype="0" conaffinity="0" density="0" />
-      <geom name="ttt_cell_4" type="box" size="0.025 0.025 0.002"
-        rgba="0.85 0.85 0.85 0" contype="0" conaffinity="0" density="0" />
-      <geom name="ttt_cell_5" type="box" size="0.025 0.025 0.002"
-        rgba="0.1 0.1 0.1 0" contype="0" conaffinity="0" density="0" />
-      <geom name="ttt_cell_6" type="box" size="0.025 0.025 0.002"
-        rgba="0.85 0.85 0.85 0" contype="0" conaffinity="0" density="0" />
-      <geom name="ttt_cell_7" type="box" size="0.025 0.025 0.002"
-        rgba="0.1 0.1 0.1 0" contype="0" conaffinity="0" density="0" />
-      <geom name="ttt_cell_8" type="box" size="0.025 0.025 0.002"
-        rgba="0.85 0.85 0.85 0" contype="0" conaffinity="0" density="0" />
-      <geom name="ttt_cell_9" type="box" size="0.025 0.025 0.002"
-        rgba="0.1 0.1 0.1 0" contype="0" conaffinity="0" density="0" />
       <body name="left_hip_pitch_link" pos="0 0.064452 -0.1027">
         <inertial pos="0.002741 0.047791 -0.02606" quat="0.954862 0.293964 0.0302556 0.030122"
           mass="1.35" diaginertia="0.00181517 0.00153422 0.00116212" />
@@ -586,6 +586,15 @@
       </body>
     </body>
   </worldbody>
+
+  <equality>
+    <weld name="ttt_left_foot_weld" body1="left_ankle_roll_link"
+      body2="ttt_left_foot_anchor" relpose="0 0 0 1 0 0 0"
+      active="false" solref="0.001 1" solimp="0.999 0.999 0.001" />
+    <weld name="ttt_right_foot_weld" body1="right_ankle_roll_link"
+      body2="ttt_right_foot_anchor" relpose="0 0 0 1 0 0 0"
+      active="false" solref="0.001 1" solimp="0.999 0.999 0.001" />
+  </equality>
 
   <actuator>
     <motor name="left_hip_pitch" joint="left_hip_pitch_joint" ctrlrange="-88 88" />

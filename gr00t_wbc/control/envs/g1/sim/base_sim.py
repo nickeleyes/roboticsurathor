@@ -9,7 +9,6 @@ import mujoco
 import mujoco.viewer
 import numpy as np
 import rclpy
-from scipy.spatial.transform import Rotation
 from unitree_sdk2py.core.channel import ChannelFactoryInitialize
 import yaml
 
@@ -52,7 +51,9 @@ class DefaultEnv:
         # Thread safety lock
         self.reward_lock = Lock()
         self.ttt_marker_lock = Lock()
-        self.pending_ttt_corners = None
+        self.pending_ttt_ik_target = None
+        self.pending_ttt_reference_corners = None
+        self.pending_ttt_foot_lock = False
 
         # Unitree bridge will be initialized by the simulator
         self.unitree_bridge = None
@@ -281,41 +282,50 @@ class DefaultEnv:
 
     def sim_step(self):
         with self.ttt_marker_lock:
-            corners = self.pending_ttt_corners
-            self.pending_ttt_corners = None
-        if corners is not None:
-            for name, point in zip(("p1", "p3", "p7", "p9"), corners):
-                marker = self.mj_model.geom(f"ttt_{name}")
-                marker.pos = point
-                marker.rgba[3] = 1.0
-
-            p1, p3, p7, p9 = corners
-            x_vector = ((p3 - p1) + (p9 - p7)) / 2
-            y_vector = ((p7 - p1) + (p9 - p3)) / 2
-            x_pitch = np.linalg.norm(x_vector) / 2
-            y_pitch = np.linalg.norm(y_vector) / 2
-            x_axis = x_vector / np.linalg.norm(x_vector)
-            y_axis = y_vector - x_axis * np.dot(y_vector, x_axis)
-            y_axis /= np.linalg.norm(y_axis)
-            z_axis = np.cross(x_axis, y_axis)
-            rotation = np.column_stack((x_axis, y_axis, z_axis))
-            xyzw = Rotation.from_matrix(rotation).as_quat()
-            quaternion = xyzw[[3, 0, 1, 2]]
-
-            for row in range(3):
-                for column in range(3):
-                    u, v = column / 2, row / 2
-                    center = (
-                        (1 - u) * (1 - v) * p1
-                        + u * (1 - v) * p3
-                        + (1 - u) * v * p7
-                        + u * v * p9
-                    )
-                    cell = self.mj_model.geom(f"ttt_cell_{1 + 3 * row + column}")
-                    cell.pos = center - z_axis * 0.003
-                    cell.quat = quaternion
-                    cell.size = [0.44 * x_pitch, 0.44 * y_pitch, 0.002]
-                    cell.rgba[3] = 0.85
+            ik_target = self.pending_ttt_ik_target
+            self.pending_ttt_ik_target = None
+            reference_corners = self.pending_ttt_reference_corners
+            self.pending_ttt_reference_corners = None
+            lock_feet = self.pending_ttt_foot_lock
+            self.pending_ttt_foot_lock = False
+        if lock_feet:
+            mujoco.mj_forward(self.mj_model, self.mj_data)
+            for side in ("left", "right"):
+                foot_id = self.mj_model.body(f"{side}_ankle_roll_link").id
+                anchor_id = self.mj_model.body(f"ttt_{side}_foot_anchor").id
+                mocap_id = self.mj_model.body_mocapid[anchor_id]
+                weld_id = self.mj_model.equality(f"ttt_{side}_foot_weld").id
+                self.mj_data.mocap_pos[mocap_id] = self.mj_data.xpos[foot_id]
+                self.mj_data.mocap_quat[mocap_id] = self.mj_data.xquat[foot_id]
+                self.mj_data.eq_active[weld_id] = 1
+            mujoco.mj_forward(self.mj_model, self.mj_data)
+            print(
+                "Locked both feet to their current MuJoCo world poses",
+                flush=True,
+            )
+        if reference_corners is not None:
+            for name, point in zip(("p1", "p3", "p7", "p9"), reference_corners):
+                marker_id = self.mj_model.geom(f"ttt_reference_{name}").id
+                body_id = self.mj_model.body(f"ttt_reference_{name}_body").id
+                mocap_id = self.mj_model.body_mocapid[body_id]
+                self.mj_data.mocap_pos[mocap_id] = point
+                self.mj_model.geom_rgba[marker_id, 3] = 1.0
+            print(
+                "Placed fixed gray board references in world frame: "
+                f"{np.round(reference_corners, 4)}",
+                flush=True,
+            )
+        if ik_target is not None:
+            marker_id = self.mj_model.geom("ttt_ik_target").id
+            body_id = self.mj_model.body("ttt_ik_target_body").id
+            mocap_id = self.mj_model.body_mocapid[body_id]
+            self.mj_data.mocap_pos[mocap_id] = ik_target
+            self.mj_model.geom_rgba[marker_id, 3] = 1.0
+            print(
+                f"Placed red IK target in world frame: "
+                f"{np.round(ik_target, 4)}",
+                flush=True,
+            )
 
         self.obs = self.prepare_obs()
         self.unitree_bridge.PublishLowState(self.obs)
@@ -450,9 +460,17 @@ class DefaultEnv:
         if self.viewer is not None:
             self.viewer.sync()
 
-    def set_ttt_markers(self, corners):
+    def set_ttt_ik_target(self, position):
         with self.ttt_marker_lock:
-            self.pending_ttt_corners = np.asarray(corners, dtype=float).copy()
+            self.pending_ttt_ik_target = np.asarray(position, dtype=float).copy()
+
+    def set_ttt_reference_markers(self, corners):
+        with self.ttt_marker_lock:
+            self.pending_ttt_reference_corners = np.asarray(corners, dtype=float).copy()
+
+    def lock_ttt_feet(self):
+        with self.ttt_marker_lock:
+            self.pending_ttt_foot_lock = True
 
     def update_viewer_camera(self):
         if self.viewer is not None:

@@ -266,9 +266,17 @@ class G1Env(HumanoidEnv):
         else:
             raise NotImplementedError("IK indicators are only implemented for robocasa simulator")
 
-    def set_ttt_markers(self, corners):
+    def set_ttt_ik_target(self, position):
         if self.use_sim:
-            self.sim.sim_env.set_ttt_markers(corners)
+            self.sim.sim_env.set_ttt_ik_target(position)
+
+    def set_ttt_reference_markers(self, corners):
+        if self.use_sim:
+            self.sim.sim_env.set_ttt_reference_markers(corners)
+
+    def lock_ttt_feet(self):
+        if self.use_sim:
+            self.sim.sim_env.lock_ttt_feet()
 
     def set_sync_mode(self, sync_mode: bool, steps_per_action: int = 4):
         """When set to True, the simulator will wait for the action to be sent to it"""

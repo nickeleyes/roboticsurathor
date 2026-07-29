@@ -20,17 +20,10 @@ def _matrix(placement):
 class PelvisTracker:
     """Estimate pelvis motion using stationary left and right foot frames."""
 
-    def __init__(
-        self,
-        robot_model=None,
-        translation_tolerance=0.02,
-        rotation_tolerance=np.deg2rad(2.0),
-    ):
+    def __init__(self, robot_model=None):
         self.robot_model = robot_model or instantiate_g1_robot_model(
             waist_location="lower_body"
         )
-        self.translation_tolerance = translation_tolerance
-        self.rotation_tolerance = rotation_tolerance
         self.initial = None
         self.final = None
 
@@ -57,7 +50,7 @@ class PelvisTracker:
         return self.final
 
     def pelvis_delta(self):
-        """Return final_pelvis_T_initial_pelvis and foot-agreement diagnostics."""
+        """Return the averaged final-pelvis to initial-pelvis transform."""
         if self.initial is None or self.final is None:
             raise RuntimeError("Initial and final leg states are required")
 
@@ -67,34 +60,15 @@ class PelvisTracker:
             final = self.final[f"{side}_foot_T_pelvis"]
             estimates[side] = np.linalg.inv(final) @ initial
 
-        disagreement = np.linalg.inv(estimates["left"]) @ estimates["right"]
-        translation_error = np.linalg.norm(disagreement[:3, 3])
-        rotation_error = Rotation.from_matrix(disagreement[:3, :3]).magnitude()
-        if (
-            translation_error > self.translation_tolerance
-            or rotation_error > self.rotation_tolerance
-        ):
-            raise RuntimeError(
-                "Fixed-foot pelvis estimates disagree: "
-                f"translation={translation_error:.4f} m, "
-                f"rotation={np.degrees(rotation_error):.2f} deg"
-            )
-
         delta = np.eye(4)
         delta[:3, 3] = (estimates["left"][:3, 3] + estimates["right"][:3, 3]) / 2
         delta[:3, :3] = Rotation.from_matrix(
             [estimates["left"][:3, :3], estimates["right"][:3, :3]]
         ).mean().as_matrix()
-        return {
-            "final_pelvis_T_initial_pelvis": delta,
-            "left_estimate": estimates["left"],
-            "right_estimate": estimates["right"],
-            "translation_disagreement_m": translation_error,
-            "rotation_disagreement_rad": rotation_error,
-        }
+        return delta
 
     def transform_points(self, points):
         """Transform initial-pelvis points into the final pelvis frame."""
         points = np.asarray(points, dtype=float)
-        delta = self.pelvis_delta()["final_pelvis_T_initial_pelvis"]
+        delta = self.pelvis_delta()
         return points @ delta[:3, :3].T + delta[:3, 3]

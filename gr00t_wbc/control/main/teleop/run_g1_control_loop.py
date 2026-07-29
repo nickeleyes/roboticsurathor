@@ -110,7 +110,6 @@ def main(
     upper_body_policy_subscriber = ROSMsgSubscriber(CONTROL_GOAL_TOPIC)
 
     last_teleop_cmd = None
-    last_policy_key_event = None
     startup_action_pending = startup_action is not None
     try:
         while ros_manager.ok():
@@ -140,16 +139,14 @@ def main(
                     if upper_body_cmd:
                         wbc_goal = upper_body_cmd.copy()
                         last_teleop_cmd = upper_body_cmd.copy()
-                        policy_key = wbc_goal.pop("policy_key", None)
-                        policy_key_event = wbc_goal.pop("policy_key_event", None)
-                        if (
-                            policy_key is not None
-                            and policy_key_event != last_policy_key_event
-                        ):
-                            dispatcher.handle_key(policy_key)
-                            last_policy_key_event = policy_key_event
-                        if "ttt_corners" in wbc_goal:
-                            env.set_ttt_markers(wbc_goal.pop("ttt_corners"))
+                        if "ttt_ik_target" in wbc_goal:
+                            env.set_ttt_ik_target(wbc_goal.pop("ttt_ik_target"))
+                        if "ttt_reference_corners_world" in wbc_goal:
+                            env.set_ttt_reference_markers(
+                                wbc_goal.pop("ttt_reference_corners_world")
+                            )
+                        if wbc_goal.pop("ttt_lock_feet", False):
+                            env.lock_ttt_feet()
                         if config.ik_indicator:
                             env.set_ik_indicator(upper_body_cmd)
                     # Send goal to policy

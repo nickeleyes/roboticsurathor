@@ -8,20 +8,8 @@ from gr00t_wbc.control.teleop.solver.hand.instantiation.g1_hand_ik_instantiation
 from gr00t_wbc.control.teleop.teleop_retargeting_ik import TeleopRetargetingIK
 
 FIXED_GRIP_POSE = np.array([0.0, 0.0, 0.7, 0.8, -0.45, -0.45, -0.7])
-SIDE_T_RIGHT_ARM = np.array(
-    [0.0, -np.pi / 2, 0.0, np.pi / 2, 0.0, 0.0, 0.0]
-)
-SIDE_T_BENT_RIGHT_ARM = np.array(
-    [0.0, -np.pi / 2, 0.0, 0.0, 0.0, 0.0, 0.0]
-)
-FRONT_REACH_RIGHT_ARM = np.array(
-    [-np.pi / 2, -0.2, 0.0, 0.0, 0.0, 0.0, 0.0]
-)
 LEFT_ARM_AT_SIDE = np.array(
     [0.0, np.deg2rad(30.0), 0.0, np.pi / 2, 0.0, 0.0, 0.0]
-)
-RIGHT_ARM_AT_SIDE = np.array(
-    [0.0, np.deg2rad(-30.0), 0.0, np.pi / 2, 0.0, 0.0, 0.0]
 )
 
 
@@ -40,9 +28,13 @@ class PalmNormalTask(Task):
         rotation = configuration.get_transform_frame_to_world(self.frame).rotation
         normal_in_palm = rotation.T @ self.target
         skew_y = np.array([[0, 0, 1], [0, 0, 0], [-1, 0, 0]])
-        skew_n = np.array([[0, -normal_in_palm[2], normal_in_palm[1]],
-                           [normal_in_palm[2], 0, -normal_in_palm[0]],
-                           [-normal_in_palm[1], normal_in_palm[0], 0]])
+        skew_n = np.array(
+            [
+                [0, -normal_in_palm[2], normal_in_palm[1]],
+                [normal_in_palm[2], 0, -normal_in_palm[0]],
+                [-normal_in_palm[1], normal_in_palm[0], 0],
+            ]
+        )
         return skew_y @ skew_n @ configuration.get_frame_jacobian(self.frame)[3:]
 
     def __repr__(self):
@@ -73,69 +65,29 @@ class Controller:
         self.normal_task = PalmNormalTask(self.site, 50.0)
         self.solver.body_ik_solver.tasks["palm_normal"] = self.normal_task
 
-        upper_body = list(self.model.get_joint_group_indices("upper_body"))
-        self.upper_body = upper_body
-        self.waist_yaw = upper_body.index(waist)
-        self.left_arm = [
-            upper_body.index(i) for i in self.model.get_joint_group_indices("left_arm")
-        ]
-        self.right_arm = [
-            upper_body.index(i) for i in self.model.get_joint_group_indices("right_arm")
-        ]
-        self.left_hand = [
-            upper_body.index(i) for i in self.model.get_joint_group_indices("left_hand")
-        ]
-        self.right_hand = [
-            upper_body.index(i) for i in self.model.get_joint_group_indices("right_hand")
-        ]
-        self.joints = self.model.default_body_pose[
-            self.model.get_joint_group_indices("upper_body")
-        ].copy()
+        upper_body = self.model.get_joint_group_indices("upper_body")
+        local_index = {joint: index for index, joint in enumerate(upper_body)}
+
+        def group(name):
+            return [
+                local_index[joint]
+                for joint in self.model.get_joint_group_indices(name)
+            ]
+
+        self.waist_yaw = local_index[waist]
+        self.left_arm = group("left_arm")
+        self.right_arm = group("right_arm")
+        self.left_hand = group("left_hand")
+        self.right_hand = group("right_hand")
+        self.joints = self.model.default_body_pose[upper_body].copy()
         # index_0, index_1, middle_0, middle_1, thumb_0, thumb_1, thumb_2.
         # The index finger stays fully extended; the middle finger forms the pinch.
-        self.hand = FIXED_GRIP_POSE.copy()
-        self.joints[self.right_hand] = self.hand
-        self.relax_left_arm(self.joints)
+        self._apply_fixed_joints(self.joints)
 
-    def neutral(self):
-        return self.joints.copy()
-
-    def both_arms_down_pose(self, waist_yaw=0.0):
-        joints = self.joints.copy()
-        joints[self.waist_yaw] = waist_yaw
+    def _apply_fixed_joints(self, joints):
         joints[self.left_arm] = LEFT_ARM_AT_SIDE
-        joints[self.right_arm] = RIGHT_ARM_AT_SIDE
-        joints[self.left_hand] = np.zeros(7)
+        joints[self.left_hand] = 0.0
         joints[self.right_hand] = FIXED_GRIP_POSE
-        return joints
-
-    def side_t_pose(self, waist_yaw=0.0):
-        joints = self.joints.copy()
-        joints[self.waist_yaw] = waist_yaw
-        joints[self.right_arm] = SIDE_T_RIGHT_ARM
-        joints[self.right_hand] = FIXED_GRIP_POSE
-        self.relax_left_arm(joints)
-        return joints
-
-    def front_reach_pose(self, waist_yaw=0.0):
-        joints = self.joints.copy()
-        joints[self.waist_yaw] = waist_yaw
-        joints[self.right_arm] = FRONT_REACH_RIGHT_ARM
-        joints[self.right_hand] = FIXED_GRIP_POSE
-        self.relax_left_arm(joints)
-        return joints
-
-    def side_t_bent_pose(self, waist_yaw=0.0):
-        joints = self.joints.copy()
-        joints[self.waist_yaw] = waist_yaw
-        joints[self.right_arm] = SIDE_T_BENT_RIGHT_ARM
-        joints[self.right_hand] = FIXED_GRIP_POSE
-        self.relax_left_arm(joints)
-        return joints
-
-    def relax_left_arm(self, joints):
-        joints[self.left_arm] = LEFT_ARM_AT_SIDE
-        joints[self.left_hand] = np.zeros(7)
 
     def ik(self, position, rotation):
         self.normal_task.target = np.asarray(rotation, dtype=float)[:, 1]
@@ -146,17 +98,5 @@ class Controller:
             {"body_data": {self.site: target}, "left_hand_data": None, "right_hand_data": None}
         )
         self.joints = self.solver.get_action().copy()
-        self.relax_left_arm(self.joints)
-        self.joints[self.right_hand] = self.hand
+        self._apply_fixed_joints(self.joints)
         return self.joints
-
-    def gripper(self, state):
-        # Tic-tac-toe currently uses one mechanically tuned grasp throughout.
-        self.hand = FIXED_GRIP_POSE.copy()
-        self.joints[self.right_hand] = self.hand
-        self.relax_left_arm(self.joints)
-        return self.joints
-
-    def commands(self, plan):
-        for step in plan:
-            yield ("move", self.ik(step[1], step[2]), step[3]) if step[0] == "move" else step
