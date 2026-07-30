@@ -221,12 +221,21 @@ class G1Env(HumanoidEnv):
 
         # Map action from joint order to actuator order
         body_actuator_q = self.robot_model.get_body_actuated_joints(action["q"])
+        body_actuator_tau = np.zeros_like(body_actuator_q)
+        if self.enable_gravity_compensation and self.last_obs is not None:
+            gravity_torques = self.robot_model.compute_gravity_compensation_torques(
+                np.asarray(self.last_obs["q"], dtype=float),
+                joint_groups=self.gravity_compensation_joints,
+            )
+            body_actuator_tau = self.robot_model.get_body_actuated_joints(
+                gravity_torques
+            )
 
         self.body().queue_action(
             {
                 "body_q": body_actuator_q,
                 "body_dq": np.zeros_like(body_actuator_q),
-                "body_tau": np.zeros_like(body_actuator_q),
+                "body_tau": body_actuator_tau,
             }
         )
 

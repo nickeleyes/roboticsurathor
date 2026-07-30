@@ -162,6 +162,7 @@ class G1SupplementalInfo(RobotSupplementalInfo):
                 "groups": [],
             },
             "waist_pitch_only": {"joints": ["waist_pitch_joint"], "groups": []},
+            "waist_yaw_only": {"joints": ["waist_yaw_joint"], "groups": []},
             # Leg groups
             "left_leg": {
                 "joints": [

@@ -38,6 +38,20 @@ RIGHT_ARM_SIDE = np.array(
 RIGHT_ARM_SIDE_BENT = np.array(
     [0.0, -np.pi / 2, 0.0, 0.0, 0.0, 0.0, 0.0]
 )
+RIGHT_ARM_JOINT_NAMES = (
+    "shoulder_pitch",
+    "shoulder_roll",
+    "shoulder_yaw",
+    "elbow",
+    "wrist_roll",
+    "wrist_pitch",
+    "wrist_yaw",
+)
+WAIST_JOINT_NAMES = (
+    "waist_yaw_joint",
+    "waist_roll_joint",
+    "waist_pitch_joint",
+)
 
 
 @dataclass
@@ -98,6 +112,8 @@ def computation_worker(requests, results):
 
 def main(config: TTTConfig):
     config.enable_waist = True
+    config.enable_gravity_compensation = True
+    config.gravity_compensation_joints = ["right_arm"]
     controller = Controller(0.0)
     process_context = multiprocessing.get_context("spawn")
     worker_requests = process_context.Queue()
@@ -129,6 +145,8 @@ def main(config: TTTConfig):
         goal = {
             "target_upper_body_pose": joints,
             "target_time": time.monotonic() + duration,
+            "preserve_upper_body_waist_roll": True,
+            "preserve_upper_body_waist_pitch": True,
             "preserve_upper_body_waist_yaw": True,
         }
         if use_groot_torso:
@@ -143,6 +161,8 @@ def main(config: TTTConfig):
     def keepalive():
         publisher.publish({
             "navigate_cmd": np.zeros(3, dtype=np.float32),
+            "preserve_upper_body_waist_roll": True,
+            "preserve_upper_body_waist_pitch": True,
             "preserve_upper_body_waist_yaw": True,
         })
 
@@ -183,6 +203,49 @@ def main(config: TTTConfig):
                 return state
             time.sleep(0.02)
         return None
+
+    def grip_fk_in_pelvis(full_q):
+        full_q = np.asarray(full_q, dtype=float)
+        controller.model.cache_forward_kinematics(full_q, auto_clip=False)
+        return controller.model.frame_placement(controller.site).translation.copy()
+
+    def print_arm_angles(label, angles):
+        angles_deg = np.rad2deg(np.asarray(angles, dtype=float))
+        print(f"{label} right-arm angles (degrees):", flush=True)
+        for joint_name, angle in zip(RIGHT_ARM_JOINT_NAMES, angles_deg):
+            print(f"  {joint_name}: {angle:.3f}", flush=True)
+
+    def print_waist_angles(label, full_q):
+        angles = [
+            full_q[controller.model.dof_index(name)]
+            for name in WAIST_JOINT_NAMES
+        ]
+        print(
+            f"{label} waist angles (degrees): "
+            f"yaw={np.rad2deg(angles[0]):.3f}, "
+            f"roll={np.rad2deg(angles[1]):.3f}, "
+            f"pitch={np.rad2deg(angles[2]):.3f}",
+            flush=True,
+        )
+
+    def base_pose_parts(base_pose):
+        base_pose = np.asarray(base_pose, dtype=float)
+        rotation = Rotation.from_quat(base_pose[[4, 5, 6, 3]])
+        return base_pose[:3], rotation.as_matrix(), rotation.as_euler(
+            "xyz", degrees=True
+        )
+
+    def print_base_delta(label, first_position, first_rotation, second_position, second_rotation):
+        rotation_delta = Rotation.from_matrix(
+            first_rotation.T @ second_rotation
+        )
+        print(
+            f"{label}: translation_world="
+            f"{np.round(second_position - first_position, 5)} m, "
+            f"rotation_angle={np.rad2deg(rotation_delta.magnitude()):.4f} deg, "
+            f"rotation_xyz={np.round(rotation_delta.as_euler('xyz', degrees=True), 4)} deg",
+            flush=True,
+        )
 
     def run_move():
         print("Capturing the tic-tac-toe board", flush=True)
@@ -265,13 +328,56 @@ def main(config: TTTConfig):
         for index, (position, rotation, height, name) in enumerate(waypoint_data):
             position = np.asarray(position, dtype=float)
             rotation = np.asarray(rotation, dtype=float)
+            ik_position = position
+            ik_rotation = rotation
+            solve_pelvis_rotation = pelvis_rotation
+            solve_pelvis_position = pelvis_position
+            solve_pelvis_rpy = (
+                Rotation.from_matrix(pelvis_rotation).as_euler(
+                    "xyz", degrees=True
+                )
+                if pelvis_rotation is not None
+                else None
+            )
             if pelvis_rotation is not None:
                 display_position = pelvis_rotation @ position + pelvis_position
+                display_rotation = pelvis_rotation @ rotation
                 frame_name = "world"
+
+                solve_state = get_robot_state()
+                solve_base_pose = (
+                    None
+                    if solve_state is None
+                    else solve_state.get("floating_base_pose")
+                )
+                if solve_base_pose is not None:
+                    (
+                        solve_pelvis_position,
+                        solve_pelvis_rotation,
+                        solve_pelvis_rpy,
+                    ) = base_pose_parts(solve_base_pose)
+                    ik_position = (
+                        solve_pelvis_rotation.T
+                        @ (display_position - solve_pelvis_position)
+                    )
+                    ik_rotation = (
+                        solve_pelvis_rotation.T @ display_rotation
+                    )
             else:
                 display_position = position
                 frame_name = "pelvis"
-            joints = controller.ik(position, rotation).copy()
+            joints = controller.ik(ik_position, ik_rotation).copy()
+            requested_full_q = controller.model.default_body_pose.copy()
+            requested_full_q[
+                controller.model.get_joint_group_indices("upper_body")
+            ] = joints
+            requested_grip_pelvis = grip_fk_in_pelvis(requested_full_q)
+            requested_grip_world = (
+                solve_pelvis_rotation @ requested_grip_pelvis
+                + solve_pelvis_position
+                if solve_pelvis_rotation is not None
+                else requested_grip_pelvis
+            )
             details = (
                 f"Waypoint {index + 1}/{target_count}: "
                 f"{name} {height}, target ({frame_name})="
@@ -283,6 +389,42 @@ def main(config: TTTConfig):
                     f"offset={np.round(display_position - board_center_world, 4)}."
                 )
             print(details, flush=True)
+            print(
+                f"Planner target (captured pelvis)={np.round(position, 5)} m; "
+                f"corrected IK target (solve pelvis)={np.round(ik_position, 5)} m",
+                flush=True,
+            )
+            if solve_pelvis_rotation is not None:
+                print(
+                    f"Captured pelvis world position={np.round(pelvis_position, 5)} m; "
+                    f"solve pelvis world position={np.round(solve_pelvis_position, 5)} m; "
+                    f"solve pelvis RPY={np.round(solve_pelvis_rpy, 4)} deg",
+                    flush=True,
+                )
+                print_base_delta(
+                    "Captured-to-solve pelvis delta",
+                    pelvis_position,
+                    pelvis_rotation,
+                    solve_pelvis_position,
+                    solve_pelvis_rotation,
+                )
+            print_arm_angles("Requested", joints[controller.right_arm])
+            print_waist_angles("Requested", requested_full_q)
+            print(
+                "Requested-joint FK grip (solve pelvis)="
+                f"{np.round(requested_grip_pelvis, 5)} m, "
+                "FK-minus-corrected-IK-target="
+                f"{np.round(requested_grip_pelvis - ik_position, 5)} m",
+                flush=True,
+            )
+            print(
+                "Requested-joint FK grip "
+                f"({frame_name})={np.round(requested_grip_world, 4)}, "
+                f"red target={np.round(display_position, 4)}, "
+                "FK-minus-red="
+                f"{np.round(requested_grip_world - display_position, 4)} m",
+                flush=True,
+            )
             execute_target(
                 joints,
                 WAYPOINT_DURATION,
@@ -290,6 +432,148 @@ def main(config: TTTConfig):
                     display_position if pelvis_rotation is not None else None
                 ),
             )
+
+            actual_state = get_robot_state()
+            if actual_state is None:
+                print("Actual robot state unavailable after motion.", flush=True)
+            else:
+                actual_q = np.asarray(actual_state["q"], dtype=float)
+                if actual_q.shape != requested_full_q.shape:
+                    print(
+                        "Cannot run actual-joint FK: state q has shape "
+                        f"{actual_q.shape}, expected {requested_full_q.shape}.",
+                        flush=True,
+                    )
+                else:
+                    right_arm_indices = controller.model.get_joint_group_indices(
+                        "right_arm"
+                    )
+                    wbc_q = actual_state.get("action")
+                    if wbc_q is None:
+                        print(
+                            "Final WBC q action unavailable in robot state.",
+                            flush=True,
+                        )
+                    else:
+                        wbc_q = np.asarray(wbc_q, dtype=float)
+                        if wbc_q.shape != requested_full_q.shape:
+                            print(
+                                "Cannot inspect final WBC q: action has shape "
+                                f"{wbc_q.shape}, expected {requested_full_q.shape}.",
+                                flush=True,
+                            )
+                        else:
+                            print_arm_angles(
+                                "Final WBC command",
+                                wbc_q[right_arm_indices],
+                            )
+                            print_waist_angles("Final WBC command", wbc_q)
+                    print_arm_angles("Actual", actual_q[right_arm_indices])
+                    print_waist_angles("Actual", actual_q)
+                    print(
+                        "Actual-minus-WBC right-arm angle error (degrees)="
+                        f"{np.round(np.rad2deg(actual_q[right_arm_indices] - wbc_q[right_arm_indices]), 4)}"
+                        if wbc_q is not None
+                        and wbc_q.shape == requested_full_q.shape
+                        else "Actual-minus-WBC angle error unavailable",
+                        flush=True,
+                    )
+                    actual_grip_pelvis = grip_fk_in_pelvis(actual_q)
+                    actual_base_pose = actual_state.get("floating_base_pose")
+                    if actual_base_pose is not None:
+                        (
+                            actual_pelvis_position,
+                            actual_pelvis_rotation,
+                            actual_pelvis_rpy,
+                        ) = base_pose_parts(actual_base_pose)
+                        actual_grip_world = (
+                            actual_pelvis_rotation @ actual_grip_pelvis
+                            + actual_pelvis_position
+                        )
+                        actual_frame_name = "world"
+                        print(
+                            "Final pelvis world position="
+                            f"{np.round(actual_pelvis_position, 5)} m, "
+                            f"RPY={np.round(actual_pelvis_rpy, 4)} deg",
+                            flush=True,
+                        )
+                        print_base_delta(
+                            "Captured-to-final pelvis delta",
+                            pelvis_position,
+                            pelvis_rotation,
+                            actual_pelvis_position,
+                            actual_pelvis_rotation,
+                        )
+                        print_base_delta(
+                            "Solve-to-final pelvis delta",
+                            solve_pelvis_position,
+                            solve_pelvis_rotation,
+                            actual_pelvis_position,
+                            actual_pelvis_rotation,
+                        )
+                    else:
+                        actual_grip_world = actual_grip_pelvis
+                        actual_frame_name = "pelvis"
+                    if (
+                        wbc_q is not None
+                        and wbc_q.shape == requested_full_q.shape
+                    ):
+                        wbc_grip_pelvis = grip_fk_in_pelvis(wbc_q)
+                        if actual_base_pose is not None:
+                            wbc_grip_world = (
+                                actual_pelvis_rotation @ wbc_grip_pelvis
+                                + actual_base_pose[:3]
+                            )
+                        else:
+                            wbc_grip_world = wbc_grip_pelvis
+                        print(
+                            "Final-WBC-command FK grip (final pelvis)="
+                            f"{np.round(wbc_grip_pelvis, 5)} m",
+                            flush=True,
+                        )
+                        print(
+                            "Final-WBC-command FK grip "
+                            f"({actual_frame_name})="
+                            f"{np.round(wbc_grip_world, 4)}, "
+                            f"red target={np.round(display_position, 4)}, "
+                            "FK-minus-red="
+                            f"{np.round(wbc_grip_world - display_position, 4)} m",
+                            flush=True,
+                        )
+                    print(
+                        "Actual-joint FK grip (final pelvis)="
+                        f"{np.round(actual_grip_pelvis, 5)} m",
+                        flush=True,
+                    )
+                    print(
+                        "Actual-joint FK grip "
+                        f"({actual_frame_name})={np.round(actual_grip_world, 4)}, "
+                        f"red target={np.round(display_position, 4)}, "
+                        "FK-minus-red="
+                        f"{np.round(actual_grip_world - display_position, 4)} m",
+                        flush=True,
+                    )
+                    tau_est = actual_state.get("tau_est")
+                    if tau_est is not None:
+                        tau_est = np.asarray(tau_est, dtype=float)
+                        if tau_est.shape == requested_full_q.shape:
+                            gravity_torque = (
+                                controller.model.compute_gravity_compensation_torques(
+                                    actual_q,
+                                    joint_groups=["right_arm"],
+                                    auto_clip=False,
+                                )
+                            )
+                            print(
+                                "Actual estimated right-arm torque (Nm)="
+                                f"{np.round(tau_est[right_arm_indices], 4)}",
+                                flush=True,
+                            )
+                            print(
+                                "Pinocchio right-arm gravity torque (Nm)="
+                                f"{np.round(gravity_torque[right_arm_indices], 4)}",
+                                flush=True,
+                            )
             print(f"Completed planned arm step {index + 1}", flush=True)
             if index + 1 < target_count:
                 wait_for_space(

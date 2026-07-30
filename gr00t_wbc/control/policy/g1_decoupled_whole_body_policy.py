@@ -26,6 +26,7 @@ class G1DecoupledWholeBodyPolicy(Policy):
         self.upper_body_policy = upper_body_policy
         self.last_goal_time = time_module.monotonic()
         self.is_in_teleop_mode = False  # Track if lower body is in teleop mode
+        self.preserve_upper_body_waist_roll = False
         self.preserve_upper_body_waist_pitch = False
         self.preserve_upper_body_waist_yaw = False
         self.navigation_command = None
@@ -53,6 +54,9 @@ class G1DecoupledWholeBodyPolicy(Policy):
         """
         # Update goal timestamp for timeout safety
         self.last_goal_time = time_module.monotonic()
+        self.preserve_upper_body_waist_roll = bool(
+            goal.get("preserve_upper_body_waist_roll", False)
+        )
         self.preserve_upper_body_waist_pitch = bool(
             goal.get("preserve_upper_body_waist_pitch", False)
         )
@@ -131,8 +135,10 @@ class G1DecoupledWholeBodyPolicy(Policy):
 
         upper_body_action = self.upper_body_policy.get_action(time)
         q[upper_body_indices] = upper_body_action["target_upper_body_pose"]
+        waist_roll_idx = self.robot_model.joint_to_dof_index.get("waist_roll_joint")
         waist_pitch_idx = self.robot_model.joint_to_dof_index.get("waist_pitch_joint")
         waist_yaw_idx = self.robot_model.joint_to_dof_index.get("waist_yaw_joint")
+        upper_body_waist_roll = q[waist_roll_idx] if waist_roll_idx is not None else None
         upper_body_waist_pitch = q[waist_pitch_idx] if waist_pitch_idx is not None else None
         upper_body_waist_yaw = q[waist_yaw_idx] if waist_yaw_idx is not None else None
         q_arms = q[self.robot_model.get_joint_group_indices("arms")]
@@ -161,6 +167,8 @@ class G1DecoupledWholeBodyPolicy(Policy):
         q[lower_body_indices] = lower_body_action["body_action"][0][
             : len(lower_body_indices)
         ]  # lower body (legs + waist)
+        if self.preserve_upper_body_waist_roll and waist_roll_idx is not None:
+            q[waist_roll_idx] = upper_body_waist_roll
         if self.preserve_upper_body_waist_pitch and waist_pitch_idx is not None:
             q[waist_pitch_idx] = upper_body_waist_pitch
         if self.preserve_upper_body_waist_yaw and waist_yaw_idx is not None:

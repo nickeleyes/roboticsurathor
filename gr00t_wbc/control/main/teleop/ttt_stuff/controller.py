@@ -56,7 +56,7 @@ class Controller:
             self.model,
             left_hand_ik,
             right_hand_ik,
-            body_active_joint_groups=["right_arm"],
+            body_active_joint_groups=["right_arm", "waist_yaw_only"],
         )
         self.solver.body_ik_solver.num_step_per_frame = 30
         self.solver.body_ik_solver.update_weights(
