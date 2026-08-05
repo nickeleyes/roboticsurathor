@@ -40,8 +40,6 @@ class CameraCapture(Node):
         radial = np.sqrt(((u - cx) * z / fx) ** 2 + ((v - cy) * z / fy) ** 2 + z ** 2)
         radial[z == 0] = np.nan
         self.result = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR), radial, {
-            "width": self.info.width, "height": self.info.height,
-            "distortion_coefficients": list(self.info.d),
             "fx": fx, "fy": fy, "cx": cx, "cy": cy,
         }
 

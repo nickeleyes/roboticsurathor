@@ -113,7 +113,6 @@ def main(
     startup_action_pending = startup_action is not None
     try:
         while ros_manager.ok():
-            t_start = time.monotonic()
             with telemetry.timer("total_loop"):
                 # Step simulator if in sync mode
                 with telemetry.timer("step_simulator"):
@@ -141,10 +140,6 @@ def main(
                         last_teleop_cmd = upper_body_cmd.copy()
                         if "ttt_ik_target" in wbc_goal:
                             env.set_ttt_ik_target(wbc_goal.pop("ttt_ik_target"))
-                        if "ttt_reference_corners_world" in wbc_goal:
-                            env.set_ttt_reference_markers(
-                                wbc_goal.pop("ttt_reference_corners_world")
-                            )
                         if wbc_goal.pop("ttt_lock_feet", False):
                             env.lock_ttt_feet()
                         if config.ik_indicator:
@@ -240,20 +235,10 @@ def main(
                         }
                     )
                 data_exp_pub.publish(msg)
-                end_time = time.monotonic()
-
             if env.sim and (not env.sim.sim_thread or not env.sim.sim_thread.is_alive()):
                 raise RuntimeError("Simulator thread is not alive")
 
             rate.sleep()
-
-            # # Log timing information every 100 iterations (roughly every 2 seconds at 50Hz)
-            # if config.verbose_timing:
-            #     # When verbose timing is enabled, always show timing
-            #     telemetry.log_timing_info(context="G1 Control Loop", threshold=0.0)
-            # elif (end_time - t_start) > (1 / config.control_frequency) and not config.sim_sync_mode:
-            #     # Only show timing when loop is slow and verbose_timing is disabled
-            #     telemetry.log_timing_info(context="G1 Control Loop Missed", threshold=0.001)
 
     except ros_manager.exceptions() as e:
         print(f"ROSManager interrupted by user: {e}")

@@ -3,11 +3,10 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+from PIL import Image
 import torch
 import torch.nn as nn
-from PIL import Image
 from torchvision import models, transforms
-
 
 checkpoint = torch.load(Path(__file__).with_name("center_resnet18.pt"),
                         map_location="cpu", weights_only=True)
@@ -22,9 +21,12 @@ transform = transforms.Compose([
 ])
 
 
+def odd(value):
+    return int(round(value)) // 2 * 2 + 1
+
+
 def detect(frame):
     scale = min(frame.shape[:2])
-    odd = lambda value: int(round(value)) // 2 * 2 + 1
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     mask = cv2.GaussianBlur(cv2.inRange(gray, 160, 255), (odd(scale * .01),) * 2, 0)
     _, mask = cv2.threshold(mask, 80, 255, cv2.THRESH_BINARY)
@@ -57,26 +59,12 @@ def detect(frame):
     destination = np.array([[0, 0], [999, 0], [999, 773], [0, 773]], np.float32)
     board = cv2.warpPerspective(frame, cv2.getPerspectiveTransform(corners, destination),
                                 (1000, 774))[45:735, 155:845]
-    codes, labels = [], []
+    cells = []
     for row in range(3):
         for column in range(3):
             cell = board[row * 230:(row + 1) * 230, column * 230:(column + 1) * 230]
-            tensor = transform(Image.fromarray(cv2.cvtColor(cell, cv2.COLOR_BGR2RGB))).unsqueeze(0)
-            with torch.inference_mode():
-                label = checkpoint["class_names"][model(tensor).argmax(1).item()]
-            labels.append(label)
-            codes.append({"empty": "0", "green": "1", "white": "2"}[label])
-
-    output = Path(__file__).with_name("outputs")
-    output.mkdir(exist_ok=True)
-    corner_image = frame.copy()
-    cv2.polylines(corner_image, [corners.astype(np.int32)], True, (0, 255, 0), 2)
-    detected_board = board.copy()
-    for index, label in enumerate(labels):
-        cv2.putText(detected_board, f"{index + 1}: {label}",
-                    ((index % 3) * 230 + 8, (index // 3) * 230 + 25),
-                    cv2.FONT_HERSHEY_SIMPLEX, .55, (0, 0, 255), 2, cv2.LINE_AA)
-    cv2.imwrite(str(output / "color.png"), frame)
-    cv2.imwrite(str(output / "board_detection.png"), detected_board)
-    cv2.imwrite(str(output / "corners.png"), corner_image)
+            cells.append(transform(Image.fromarray(cv2.cvtColor(cell, cv2.COLOR_BGR2RGB))))
+    with torch.inference_mode():
+        labels = model(torch.stack(cells)).argmax(1).tolist()
+    codes = [{"empty": "0", "green": "1", "white": "2"}[checkpoint["class_names"][i]] for i in labels]
     return {"board_state": "".join(codes), "corners_uv": corners.tolist()}

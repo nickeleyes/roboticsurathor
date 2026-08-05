@@ -279,10 +279,6 @@ class G1Env(HumanoidEnv):
         if self.use_sim:
             self.sim.sim_env.set_ttt_ik_target(position)
 
-    def set_ttt_reference_markers(self, corners):
-        if self.use_sim:
-            self.sim.sim_env.set_ttt_reference_markers(corners)
-
     def lock_ttt_feet(self):
         if self.use_sim:
             self.sim.sim_env.lock_ttt_feet()

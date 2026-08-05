@@ -71,6 +71,15 @@ Keyboard shortcuts (terminal window):
 - `1` / `2`: Raise / lower the base height
 - `backspace` (viewer): Reset the robot in the visualizer
 
+### Experimental G1 tic-tac-toe application
+
+This repository includes an experimental vision-to-manipulation
+tic-tac-toe application for simulation and the real G1. It depends on changes across
+the control loop, policy, environment, robot model, simulator XML, and Git LFS
+assets; the `ttt_stuff/` directory is not standalone. See
+[`TICTACTOE_HANDOFF.md`](TICTACTOE_HANDOFF.md) for the complete clone, setup,
+operation, calibration, safety, and troubleshooting notes.
+
 ---
 
 ## Running the Teleoperation Stack

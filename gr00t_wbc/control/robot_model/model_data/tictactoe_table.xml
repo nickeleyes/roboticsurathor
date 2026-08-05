@@ -1,6 +1,5 @@
 <mujoco>
     <default>
-    <!-- 1. Create a non-collidable class -->
         <default class="ghost_body">
             <geom contype="0" conaffinity="0"/>
         </default>
@@ -8,12 +7,6 @@
 
     <worldbody>
         <body name="tictactoe_table" pos="0.65 -0.25 0.70" childclass="ghost_body">
-
-            <!-- <geom name="table_leg_fl" type="box" pos="0.07 0.07 -0.275" size="0.012 0.012 0.275" rgba="0.35 0.25 0.18 1" />
-            <geom name="table_leg_fr" type="box" pos="0.07 -0.07 -0.275" size="0.012 0.012 0.275" rgba="0.35 0.25 0.18 1" />
-            <geom name="table_leg_bl" type="box" pos="-0.07 0.07 -0.275" size="0.012 0.012 0.275" rgba="0.35 0.25 0.18 1" />
-            <geom name="table_leg_br" type="box" pos="-0.07 -0.07 -0.275" size="0.012 0.012 0.275" rgba="0.35 0.25 0.18 1" /> -->
-
             <geom name="cell_1" type="box" pos="0.072 0.072 0.031" size="0.036 0.036 0.003" rgba="0.25 0.25 0.25 1" />
             <geom name="cell_2" type="box" pos="0.072 0 0.031" size="0.036 0.036 0.003" rgba="0.60 0.60 0.60 1" />
             <geom name="cell_3" type="box" pos="0.072 -0.072 0.031" size="0.036 0.036 0.003" rgba="0.25 0.25 0.25 1" />
@@ -23,12 +16,6 @@
             <geom name="cell_7" type="box" pos="-0.072 0.072 0.031" size="0.036 0.036 0.003" rgba="0.25 0.25 0.25 1" />
             <geom name="cell_8" type="box" pos="-0.072 0 0.031" size="0.036 0.036 0.003" rgba="0.60 0.60 0.60 1" />
             <geom name="cell_9" type="box" pos="-0.072 -0.072 0.031" size="0.036 0.036 0.003" rgba="0.25 0.25 0.25 1" />
-
-            <!-- <site name="board_corner_front_left" pos="0.075 0.075 0.04" size="0.008" rgba="1 0 0 1" />
-            <site name="board_corner_front_right" pos="0.075 -0.075 0.04" size="0.008" rgba="0 1 0 1" />
-            <site name="board_corner_back_left" pos="-0.075 0.075 0.04" size="0.008" rgba="0 0 1 1" />
-            <site name="board_corner_back_right" pos="-0.075 -0.075 0.04" size="0.008" rgba="1 1 0 1" /> -->
-
         </body>
     </worldbody>
 </mujoco>

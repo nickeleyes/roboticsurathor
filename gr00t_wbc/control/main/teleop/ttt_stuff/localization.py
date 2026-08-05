@@ -42,5 +42,4 @@ def localize(detection, radial, intrinsics):
         center - across * width / 2 + down * height / 2,
         center + across * width / 2 + down * height / 2,
     ])
-    return {"frame_id": "pelvis", "board_state": detection["board_state"],
-            "corner_cell_centers": dict(zip(("p1", "p3", "p7", "p9"), corners.tolist()))}
+    return detection["board_state"], corners

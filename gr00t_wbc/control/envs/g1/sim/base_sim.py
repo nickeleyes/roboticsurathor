@@ -52,7 +52,6 @@ class DefaultEnv:
         self.reward_lock = Lock()
         self.ttt_marker_lock = Lock()
         self.pending_ttt_ik_target = None
-        self.pending_ttt_reference_corners = None
         self.pending_ttt_foot_lock = False
 
         # Unitree bridge will be initialized by the simulator
@@ -284,8 +283,6 @@ class DefaultEnv:
         with self.ttt_marker_lock:
             ik_target = self.pending_ttt_ik_target
             self.pending_ttt_ik_target = None
-            reference_corners = self.pending_ttt_reference_corners
-            self.pending_ttt_reference_corners = None
             lock_feet = self.pending_ttt_foot_lock
             self.pending_ttt_foot_lock = False
         if lock_feet:
@@ -301,18 +298,6 @@ class DefaultEnv:
             mujoco.mj_forward(self.mj_model, self.mj_data)
             print(
                 "Locked both feet to their current MuJoCo world poses",
-                flush=True,
-            )
-        if reference_corners is not None:
-            for name, point in zip(("p1", "p3", "p7", "p9"), reference_corners):
-                marker_id = self.mj_model.geom(f"ttt_reference_{name}").id
-                body_id = self.mj_model.body(f"ttt_reference_{name}_body").id
-                mocap_id = self.mj_model.body_mocapid[body_id]
-                self.mj_data.mocap_pos[mocap_id] = point
-                self.mj_model.geom_rgba[marker_id, 3] = 1.0
-            print(
-                "Placed fixed gray board references in world frame: "
-                f"{np.round(reference_corners, 4)}",
                 flush=True,
             )
         if ik_target is not None:
@@ -463,10 +448,6 @@ class DefaultEnv:
     def set_ttt_ik_target(self, position):
         with self.ttt_marker_lock:
             self.pending_ttt_ik_target = np.asarray(position, dtype=float).copy()
-
-    def set_ttt_reference_markers(self, corners):
-        with self.ttt_marker_lock:
-            self.pending_ttt_reference_corners = np.asarray(corners, dtype=float).copy()
 
     def lock_ttt_feet(self):
         with self.ttt_marker_lock:
