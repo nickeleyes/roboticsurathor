@@ -104,13 +104,18 @@ The runtime data flow is:
 2. `ros2capture.py` receives a synchronized RGB/depth/intrinsics sample, or
    `program.py` loads the saved sample in offline mode.
 3. `vision.py` finds the white paper, perspective-rectifies the grid, and uses the
-   checked-in ResNet-18 checkpoint to classify all nine cells.
+   checked-in ResNet-18 checkpoint to classify all nine cells. Every detection
+   attempt overwrites the latest debug images in
+   `gr00t_wbc/control/main/teleop/ttt_stuff/outputs/`.
 4. `localization.py` combines pixel locations with radial depth and the calibrated
    camera-to-pelvis transform to obtain the four corner-cell centers in meters.
 5. `engine.py` chooses the next move using minimax.
-6. `planner.py` creates eight approach, grab, carry, place, and retreat waypoints.
-7. `controller.py` continuously solves right-arm plus waist-yaw IK. `program.py`
-   publishes the resulting upper-body targets to the main WBC loop.
+6. `planner.py` creates ten approach, grab, carry, place, and retreat waypoints,
+   including the open/grab state for each waypoint.
+7. `controller.py` continuously solves right-arm plus waist-yaw IK. The right index
+   finger stays extended and the thumb stays fixed; only the middle finger closes
+   to grab the piece and reopens to release it. `program.py` publishes the resulting
+   upper-body targets to the main WBC loop.
 
 Board strings contain nine row-major characters:
 
@@ -156,10 +161,13 @@ Several values are experiment-specific and are currently hard-coded:
 - Vision rectifies the paper to 1000 by 774 pixels and crops a 690 by 690 grid.
 - The localization geometry assumes the tested US Letter board layout and a
   roughly 128 mm span between the outer cell centers.
-- Planner offsets are 100 mm (`high`), 60 mm (`close`), and 20 mm (`grab`) above
+- Planner offsets are 100 mm (`high`), 60 mm (`close`), and 30 mm (`grab`) above
   the localized board plane.
-- Five green pieces are expected along the left side and five white pieces along
-  the right side of the board, at the positions encoded in `planner.py`.
+- The hand goal orientation is rotated 90 degrees counterclockwise about the
+  board normal, viewed from above.
+- Five green pieces are expected in a left-to-right row below the board, and five
+  white pieces in a left-to-right row above it, at the positions encoded in
+  `planner.py`.
 - The grip frame and fixed finger pose are tuned for the tested hand and pieces.
 
 A different camera mount, printed board, table height, piece layout, or gripper will
@@ -196,7 +204,8 @@ host networking, topic names, and that color/depth timestamps are synchronized.
 
 Run with the saved capture first. The classifier was trained only for `empty`,
 `green`, and `white`; inspect lighting and the rectified cell ordering before
-changing planner or IK code.
+changing planner or IK code. Inspect `color.png`, `mask.png`, `corners.png`, and
+`board_detection.png` under `ttt_stuff/outputs/` for the latest attempt.
 
 ### The hand target is consistently offset
 

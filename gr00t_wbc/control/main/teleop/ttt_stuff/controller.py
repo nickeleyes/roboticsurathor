@@ -6,7 +6,11 @@ from gr00t_wbc.control.teleop.solver.hand.instantiation.g1_hand_ik_instantiation
 )
 from gr00t_wbc.control.teleop.teleop_retargeting_ik import TeleopRetargetingIK
 
-FIXED_GRIP_POSE = np.array([0.0, 0.0, 0.7, 0.8, -0.45, -0.45, -0.7])
+# Joint order: index_0, index_1, middle_0, middle_1, thumb_0, thumb_1, thumb_2.
+# Opening and grabbing change only the middle finger. The index stays extended and
+# the thumb stays in the tuned static pose.
+RIGHT_HAND_OPEN_POSE = np.array([0.0, 0.0, 0.0, 0.0, -0.45, -0.45, -0.7])
+RIGHT_HAND_GRAB_POSE = np.array([0.0, 0.0, 0.8, 0.85, -0.45, -0.45, -0.7])
 LEFT_ARM_AT_SIDE = np.array([0.0, np.deg2rad(30.0), 0.0, np.pi / 2, 0.0, 0.0, 0.0])
 
 
@@ -34,7 +38,7 @@ class Controller:
             {
                 self.site: {
                     "position_cost": 100.0,
-                    "orientation_cost": np.array([15.0, 0.0, 15.0]),
+                    "orientation_cost": np.array([15.0, 15.0, 15.0]),
                 }
             }
         )
@@ -52,16 +56,14 @@ class Controller:
         self.left_hand = group("left_hand")
         self.right_hand = group("right_hand")
         self.joints = self.model.default_body_pose[upper_body].copy()
-        # index_0, index_1, middle_0, middle_1, thumb_0, thumb_1, thumb_2.
-        # The index finger stays fully extended; the middle finger forms the pinch.
         self._apply_fixed_joints(self.joints)
 
-    def _apply_fixed_joints(self, joints):
+    def _apply_fixed_joints(self, joints, grabbing=False):
         joints[self.left_arm] = LEFT_ARM_AT_SIDE
         joints[self.left_hand] = 0.0
-        joints[self.right_hand] = FIXED_GRIP_POSE
+        joints[self.right_hand] = RIGHT_HAND_GRAB_POSE if grabbing else RIGHT_HAND_OPEN_POSE
 
-    def ik(self, position, rotation, q):
+    def ik(self, position, rotation, q, grabbing=False):
         target = np.eye(4)
         target[:3, 3] = np.array(position, dtype=float)
         target[:3, :3] = np.array(rotation, dtype=float)
@@ -77,5 +79,5 @@ class Controller:
 
         self.solver.set_goal({"body_data": {self.site: target}, "left_hand_data": None, "right_hand_data": None})
         self.joints = self.solver.get_action().copy()
-        self._apply_fixed_joints(self.joints)
+        self._apply_fixed_joints(self.joints, grabbing)
         return self.joints

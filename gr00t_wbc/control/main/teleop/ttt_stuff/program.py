@@ -44,7 +44,6 @@ class TTTProgram:
 
     def _publish(self, joints=None, duration=None, marker=None):
         goal = {
-            "navigate_cmd": np.zeros(3, dtype=np.float32),
             "preserve_upper_body_waist_yaw": True,
         }
         if joints is not None:
@@ -160,7 +159,7 @@ class TTTProgram:
         pelvis_rotation = Rotation.from_quat(base[[4, 5, 6, 3]]).as_matrix()
         return pelvis_rotation.T @ (position - base[:3]), pelvis_rotation.T @ rotation
 
-    def _run_waypoint(self, target):
+    def _run_waypoint(self, target, grabbing):
         marker = target[2] if self.config.env_type == "sim" else None
         last_log = 0.0
         while not self.continue_event.is_set():
@@ -178,7 +177,7 @@ class TTTProgram:
                     error = np.linalg.norm(grip.translation - position)
                     normal_error = np.arccos(np.clip(grip.rotation[:, 1] @ rotation[:, 1], -1.0, 1.0))
                     joint_speed = np.max(np.abs(np.asarray(state["dq"])[self.upper_indices][self.controlled]))
-                solved = self.controller.ik(position, rotation, full_q)
+                solved = self.controller.ik(position, rotation, full_q, grabbing)
                 self._publish(solved, self.ik_period, marker)
                 marker = None
                 if log:
@@ -213,17 +212,18 @@ class TTTProgram:
         )
         self.continue_event.clear()
         print(f"Waypoint 1/{len(steps)} is ready. Press SPACE to start.", flush=True)
-        while not self.continue_event.wait(KEEPALIVE_PERIOD):
-            self._publish()
+        self.continue_event.wait()
 
-        for index, (name, height) in enumerate(steps, 1):
+        for index, (name, height, grabbing) in enumerate(steps, 1):
             self.continue_event.clear()
             action = "finish" if index == len(steps) else "advance"
+            hand = "grab" if grabbing else "open"
             print(
-                f"Waypoint {index}/{len(steps)}: {name} {height}; press SPACE to {action} when satisfied.",
+                f"Waypoint {index}/{len(steps)}: {name} {height}, hand {hand}; "
+                f"press SPACE to {action} when satisfied.",
                 flush=True,
             )
-            self._run_waypoint(self._fixed_target(context, name, height))
+            self._run_waypoint(self._fixed_target(context, name, height), grabbing)
 
         self._publish(self._arm_pose(RIGHT_ARM_POSES[-1][1]), POSE_DURATION)
         self._hold(POSE_DURATION)
