@@ -52,10 +52,12 @@ Focus the terminal running `run_ttt.py` when using these controls.
 
 1. Press `]` to activate the lower-body balance policy.
 2. Wait for the three-step arm initialization to finish. The terminal will print
-   `Arm initialization complete`.
+   `Arm initialization complete and waist released`. The program then waits with
+   waist yaw owned by the lower-body controller.
 3. Press `p` to capture/process the board and prepare a move.
-4. Press `SPACE` when prompted to begin, and again to accept each of the eight
-   waypoints. Each waypoint runs live IK until it is accepted.
+4. Press `SPACE` when prompted to begin. The first four waypoints visit board
+   corners 1, 3, 9, and 7 at the 6 cm close height for localization inspection;
+   the following ten perform the move. Press `SPACE` to accept each waypoint.
 5. The backtick key (`` ` ``) triggers this process's keyboard emergency stop.
    Keep the robot's physical emergency stop available as the primary real-robot
    safeguard.
@@ -99,23 +101,37 @@ relative to the world while the torso/waist moves.
 
 The runtime data flow is:
 
-1. `run_ttt.py` configures waist control, right-arm gravity compensation, a 10
-   degree/second upper-body speed limit, and the shared G1 control loop.
-2. `ros2capture.py` receives a synchronized RGB/depth/intrinsics sample, or
-   `program.py` loads the saved sample in offline mode.
-3. `vision.py` finds the white paper, perspective-rectifies the grid, and uses the
-   checked-in ResNet-18 checkpoint to classify all nine cells. Every detection
-   attempt overwrites the latest debug images in
+1. `run_ttt.py` launches two operating-system processes with disjoint CPU affinity:
+   a dedicated WBC process and a task/vision/IK process. It forwards the same CLI
+   arguments to both and supervises their shutdown.
+2. `run_ttt_control.py` runs the 50 Hz robot observation, WBC-policy, and low-level
+   command loop. It does not import the TTT program, camera, OpenCV board processing,
+   ResNet classifier, game planner, or TTT IK solver.
+3. `run_ttt_task.py` waits for the WBC state stream, initializes the arm, and handles
+   `p` and `SPACE`. It publishes completed upper-body goals to the control process
+   over the existing ROS topic.
+4. `ros2capture.py` receives a synchronized RGB/depth/intrinsics sample, or
+   `program.py` loads the saved sample in offline mode. Live capture also snapshots
+   the latest 50 Hz robot state with the camera pair.
+5. `vision.py` finds the white paper in its fixed portrait placement (green edge
+   at the bottom), normalizes it back to the original landscape coordinate frame,
+   perspective-rectifies the grid, and uses the checked-in ResNet-18 checkpoint to
+   classify all nine cells. Every detection attempt overwrites the latest debug images in
    `gr00t_wbc/control/main/teleop/ttt_stuff/outputs/`.
-4. `localization.py` combines pixel locations with radial depth and the calibrated
+6. `localization.py` combines pixel locations with radial depth and the calibrated
    camera-to-pelvis transform to obtain the four corner-cell centers in meters.
-5. `engine.py` chooses the next move using minimax.
-6. `planner.py` creates ten approach, grab, carry, place, and retreat waypoints,
+7. `engine.py` chooses the next move using minimax.
+8. `planner.py` creates ten approach, grab, carry, place, and retreat waypoints,
    including the open/grab state for each waypoint.
-7. `controller.py` continuously solves right-arm plus waist-yaw IK. The right index
+9. `controller.py` continuously solves right-arm plus waist-yaw IK. The right index
    finger stays extended and the thumb stays fixed; only the middle finger closes
    to grab the piece and reopens to release it. `program.py` publishes the resulting
    upper-body targets to the main WBC loop.
+
+After initialization, `program.py` explicitly releases upper-body ownership of waist
+yaw and waits two seconds before enabling `p`. Capturing and processing the board sends
+no control goals. Waist-yaw ownership is reacquired only after SPACE starts motion and
+is released again after completion, cancellation, or shutdown.
 
 Board strings contain nine row-major characters:
 
@@ -134,8 +150,11 @@ The most important dependencies outside that directory are:
 
 | Path | Why it is needed |
 | --- | --- |
-| `gr00t_wbc/control/main/teleop/run_ttt.py` | Executable entry point and TTT-specific WBC configuration |
-| `gr00t_wbc/control/main/teleop/run_g1_control_loop.py` | Startup, `p`/`SPACE` callbacks, TTT simulation messages, and command keepalive integration |
+| `gr00t_wbc/control/main/teleop/run_ttt.py` | Split-process launcher, CPU isolation, and coordinated shutdown |
+| `gr00t_wbc/control/main/teleop/run_ttt_control.py` | Dedicated 50 Hz WBC process |
+| `gr00t_wbc/control/main/teleop/run_ttt_task.py` | Camera, perception, planning, IK, and keyboard task process |
+| `gr00t_wbc/control/main/teleop/ttt_stuff/config.py` | Shared TTT configuration applied identically in both child processes |
+| `gr00t_wbc/control/main/teleop/run_g1_control_loop.py` | WBC policy, robot state publication, and low-level command loop |
 | `gr00t_wbc/control/envs/g1/g1_env.py` | Right-arm gravity compensation and simulation hooks |
 | `gr00t_wbc/control/envs/g1/sim/base_sim.py` | Simulated foot locks and IK target marker |
 | `gr00t_wbc/control/policy/g1_decoupled_whole_body_policy.py` | Preserves waist-yaw commands from the upper-body IK path |
@@ -156,15 +175,19 @@ only after a successful baseline run.
 
 Several values are experiment-specific and are currently hard-coded:
 
-- The camera extrinsics in `localization.py` use a pitch of about 0.831 radians and
-  a camera position of `[0.056, 0.0, 0.504]` meters in the pelvis frame.
-- Vision rectifies the paper to 1000 by 774 pixels and crops a 690 by 690 grid.
+- The neutral camera extrinsics use a pitch of about 0.831 radians and position
+  `[0.056, 0.0, 0.504]`; live real-robot capture moves that calibration with the
+  measured waist/torso pose before localization.
+- The physical paper must be portrait, rotated 90 degrees counterclockwise from the
+  original landscape placement so the green edge is at the bottom. Vision uses a
+  fixed corner permutation to normalize that placement to 1000 by 774 pixels and
+  crops a 690 by 690 grid; automatic orientation detection is not implemented.
 - The localization geometry assumes the tested US Letter board layout and a
   roughly 128 mm span between the outer cell centers.
-- Planner offsets are 100 mm (`high`), 60 mm (`close`), and 30 mm (`grab`) above
+- Planner offsets are 100 mm (`high`), 60 mm (`close`), and 0 mm (`grab`) above
   the localized board plane.
-- The hand goal orientation is rotated 90 degrees counterclockwise about the
-  board normal, viewed from above.
+- The hand uses the original board-relative goal orientation with no additional
+  rotation about the board normal.
 - Five green pieces are expected in a left-to-right row below the board, and five
   white pieces in a left-to-right row above it, at the positions encoded in
   `planner.py`.

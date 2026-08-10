@@ -22,15 +22,13 @@ class BoardPlanner:
         x_axis = unit(np.array([x_step[0], x_step[1], 0.0]))
         normal = np.array([0.0, 0.0, 1.0])
         rotation = np.column_stack((x_axis, -normal, unit(np.cross(normal, x_axis))))
-        rotation = np.array([
-            [0.0, -1.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [0.0, 0.0, 1.0],
-        ]) @ rotation
         for i in range(5):
-            u = -0.1 + 0.3 * i
-            points[f"green_square{i + 1}"] = bilerp(p1, p3, p7, p9, u, 1.4)
-            points[f"white_square{i + 1}"] = bilerp(p1, p3, p7, p9, u, -0.4)
+            v = -0.1 + 0.3 * i
+            # Vision normalizes the portrait paper back to its original landscape
+            # frame. Canonical left/right therefore map to physical bottom/top.
+            points[f"green_square{i + 1}"] = bilerp(p1, p3, p7, p9, -0.4, v)
+            points[f"white_square{i + 1}"] = bilerp(p1, p3, p7, p9, 1.4, v)
+
         return points, rotation
 
     def plan_steps(self, board, move):
@@ -43,18 +41,41 @@ class BoardPlanner:
         # closes while descending onto the source piece, stays closed during
         # transport, and opens while placing the piece in the destination cell.
         return [
-            ("pos5", "high", False),
-            (piece, "close", False),
-            (piece, "grab", False),
-            (piece, "grab", True),
-            (piece, "close", True),
-            (goal, "close", True),
-            (goal, "grab", True),
-            (goal, "grab", False),
-            (goal, "close", False),
-            ("pos5", "high", False),
+            # Verify every depot and board position before handling a piece.
+            ("white_square1", 0.06, True),
+            ("white_square2", 0.06, True),
+            ("white_square3", 0.06, True),
+            ("white_square4", 0.06, True),
+            ("white_square5", 0.06, True),
+            ("pos1", 0.06, True),
+            ("pos2", 0.06, True),
+            ("pos3", 0.06, True),
+            ("pos4", 0.06, True),
+            ("pos5", 0.06, True),
+            ("pos6", 0.06, True),
+            ("pos7", 0.06, True),
+            ("pos8", 0.06, True),
+            ("pos9", 0.06, True),
+            ("green_square1", 0.06, True),
+            ("green_square2", 0.06, True),
+            ("green_square3", 0.06, True),
+            ("green_square4", 0.06, True),
+            ("green_square5", 0.06, True),
+
+            # Typical move.
+            # ("pos5", "high", False),
+            # (piece, "close", False),
+            # (piece, "grab", False),
+            # (piece, "grab", True),
+            # (piece, "close", True),
+            # (goal, "close", True),
+            # (goal, "grab", True),
+            # (goal, "grab", False),
+            # (goal, "close", False),
+            # ("pos5", "high", False),
         ]
 
     def target(self, corners, name, height):
         points, rotation = self.points(corners)
-        return points[name] + [0.0, 0.0, HEIGHTS[height]], rotation
+        height = HEIGHTS[height] if isinstance(height, str) else height
+        return points[name] + [0.0, 0.0, height], rotation

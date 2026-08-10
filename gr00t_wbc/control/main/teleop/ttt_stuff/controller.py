@@ -6,11 +6,17 @@ from gr00t_wbc.control.teleop.solver.hand.instantiation.g1_hand_ik_instantiation
 )
 from gr00t_wbc.control.teleop.teleop_retargeting_ik import TeleopRetargetingIK
 
-# Joint order: index_0, index_1, middle_0, middle_1, thumb_0, thumb_1, thumb_2.
 # Opening and grabbing change only the middle finger. The index stays extended and
 # the thumb stays in the tuned static pose.
-RIGHT_HAND_OPEN_POSE = np.array([0.0, 0.0, 0.0, 0.0, -0.45, -0.45, -0.7])
-RIGHT_HAND_GRAB_POSE = np.array([0.0, 0.0, 0.8, 0.85, -0.45, -0.45, -0.7])
+RIGHT_HAND_POSES = {
+    "right_hand_thumb_0_joint": (-0.45, -0.45),
+    "right_hand_thumb_1_joint": (-0.45, -0.45),
+    "right_hand_thumb_2_joint": (-0.7, -0.7),
+    "right_hand_index_0_joint": (0.0, 0.0),
+    "right_hand_index_1_joint": (0.0, 0.0),
+    "right_hand_middle_0_joint": (0.0, 0.8),
+    "right_hand_middle_1_joint": (0.0, 0.85),
+}
 LEFT_ARM_AT_SIDE = np.array([0.0, np.deg2rad(30.0), 0.0, np.pi / 2, 0.0, 0.0, 0.0])
 
 
@@ -42,10 +48,12 @@ class Controller:
                 }
             }
         )
-        self.solver.body_ik_solver.tasks["posture"].cost = 0.5
-
         upper_body = self.model.get_joint_group_indices("upper_body")
         local_index = {joint: index for index, joint in enumerate(upper_body)}
+        self.upper_joint_index = {
+            name: local_index[self.model.dof_index(name)]
+            for name in RIGHT_HAND_POSES
+        }
 
         def group(name):
             return [local_index[joint] for joint in self.model.get_joint_group_indices(name)]
@@ -61,7 +69,8 @@ class Controller:
     def _apply_fixed_joints(self, joints, grabbing=False):
         joints[self.left_arm] = LEFT_ARM_AT_SIDE
         joints[self.left_hand] = 0.0
-        joints[self.right_hand] = RIGHT_HAND_GRAB_POSE if grabbing else RIGHT_HAND_OPEN_POSE
+        for joint_name, poses in RIGHT_HAND_POSES.items():
+            joints[self.upper_joint_index[joint_name]] = poses[grabbing]
 
     def ik(self, position, rotation, q, grabbing=False):
         target = np.eye(4)

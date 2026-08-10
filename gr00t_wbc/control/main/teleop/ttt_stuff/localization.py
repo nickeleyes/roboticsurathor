@@ -2,8 +2,21 @@
 import cv2
 import numpy as np
 
+CAMERA_PITCH = 0.8307767239493009
 
-def localize(detection, radial, intrinsics):
+
+def neutral_camera_to_pelvis():
+    transform = np.eye(4)
+    transform[:3, :3] = np.array([
+        [np.cos(CAMERA_PITCH), 0, np.sin(CAMERA_PITCH)],
+        [0, 1, 0],
+        [-np.sin(CAMERA_PITCH), 0, np.cos(CAMERA_PITCH)],
+    ]) @ np.array([[0, 0, 1], [-1, 0, 0], [0, -1, 0]])
+    transform[:3, 3] = [0.056, 0, 0.504]
+    return transform
+
+
+def localize(detection, radial, intrinsics, camera_to_pelvis=None):
     paper = np.asarray(detection["corners_uv"], np.float32)
     canonical = np.array([[0, 0], [999, 0], [999, 773], [0, 773]], np.float32)
     inverse = np.linalg.inv(cv2.getPerspectiveTransform(paper, canonical))
@@ -22,13 +35,28 @@ def localize(detection, radial, intrinsics):
                         (v - intrinsics["cy"]) / intrinsics["fy"], 1])
         camera_points.append(np.median(valid) * ray / np.linalg.norm(ray))
 
-    pitch = .8307767239493009
-    rotation = np.array([[np.cos(pitch), 0, np.sin(pitch)], [0, 1, 0],
-                         [-np.sin(pitch), 0, np.cos(pitch)]]) @ np.array(
-                             [[0, 0, 1], [-1, 0, 0], [0, -1, 0]])
-    measured = np.asarray(camera_points) @ rotation.T + [0.056, 0, 0.504]
+    if camera_to_pelvis is None:
+        camera_to_pelvis = neutral_camera_to_pelvis()
+    measured = (
+        np.asarray(camera_points) @ camera_to_pelvis[:3, :3].T
+        + camera_to_pelvis[:3, 3]
+    )
+    vertical_drop = camera_to_pelvis[2, 3] - measured[:, 2]
+    drops = ", ".join(
+        f"{name}={drop:.4f} m" for name, drop in zip(("p1", "p3", "p7", "p9"), vertical_drop)
+    )
+    print(
+        f"Camera-to-board vertical drop (pelvis Z): {drops}; median={np.median(vertical_drop):.4f} m",
+        flush=True,
+    )
+    board_z = np.median(measured[:, 2])
+    directions = np.asarray(camera_points)
+    directions /= np.linalg.norm(directions, axis=1, keepdims=True)
+    directions = directions @ camera_to_pelvis[:3, :3].T
+    distances = (board_z - camera_to_pelvis[2, 3]) / directions[:, 2]
+    measured = camera_to_pelvis[:3, 3] + distances[:, None] * directions
+
     center = measured.mean(0)
-    center[2] = np.median(measured[:, 2])
     across = (measured[1] - measured[0] + measured[3] - measured[2]) / 2
     down = (measured[2] - measured[0] + measured[3] - measured[1]) / 2
     across[2] = down[2] = 0

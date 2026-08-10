@@ -11,8 +11,9 @@ from sensor_msgs.msg import CameraInfo, Image
 
 
 class CameraCapture(Node):
-    def __init__(self):
+    def __init__(self, state_provider=None):
         super().__init__("ttt_camera_capture")
+        self.state_provider = state_provider
         self.color = self.depth = self.info = self.result = None
         self.create_subscription(Image, "/camera/color/image_raw",
                                  lambda msg: self.receive("color", msg), qos_profile_sensor_data)
@@ -31,6 +32,7 @@ class CameraCapture(Node):
             return
         if self.color.encoding != "rgb8" or self.depth.encoding != "16UC1":
             raise ValueError(f"Expected rgb8/16UC1, got {self.color.encoding}/{self.depth.encoding}")
+        capture_state = self.state_provider() if self.state_provider is not None else None
         rgb = np.frombuffer(self.color.data, np.uint8).reshape(self.color.height,
                                                                self.color.width, 3)
         z = np.frombuffer(self.depth.data, np.uint16).reshape(self.depth.height,
@@ -41,11 +43,11 @@ class CameraCapture(Node):
         radial[z == 0] = np.nan
         self.result = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR), radial, {
             "fx": fx, "fy": fy, "cx": cx, "cy": cy,
-        }
+        }, capture_state
 
 
-def capture():
-    node = CameraCapture()
+def capture(state_provider=None):
+    node = CameraCapture(state_provider)
     executor = SingleThreadedExecutor(context=node.context)
     executor.add_node(node)
     deadline = time.monotonic() + 60

@@ -83,6 +83,8 @@ def main(
     if env.sim and not config.sim_sync_mode:
         env.start_simulator()
 
+    initial_obs = env.observe()
+    robot_model.set_initial_body_pose(initial_obs["q"].copy())
     wbc_policy = get_wbc_policy("g1", robot_model, wbc_config, config.upper_body_joint_speed)
     keyboard_listener_pub = KeyboardListenerPublisher()
     keyboard_estop = KeyboardEStop()
@@ -140,6 +142,8 @@ def main(
                         last_teleop_cmd = upper_body_cmd.copy()
                         if "ttt_ik_target" in wbc_goal:
                             env.set_ttt_ik_target(wbc_goal.pop("ttt_ik_target"))
+                        if "ttt_board_corners" in wbc_goal:
+                            env.set_ttt_board_corners(wbc_goal.pop("ttt_board_corners"))
                         if wbc_goal.pop("ttt_lock_feet", False):
                             env.lock_ttt_feet()
                         if config.ik_indicator:

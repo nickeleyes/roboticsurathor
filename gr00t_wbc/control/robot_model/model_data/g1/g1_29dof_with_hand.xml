@@ -81,6 +81,22 @@
       <geom name="ttt_ik_target" type="sphere" size="0.012"
         rgba="1 0 0 0" contype="0" conaffinity="0" density="0" />
     </body>
+    <body name="ttt_board_edge_0_body" mocap="true" pos="0 0 0">
+      <geom name="ttt_board_edge_0" type="capsule" size="0.004 0.1"
+        rgba="0 1 1 0" contype="0" conaffinity="0" density="0" />
+    </body>
+    <body name="ttt_board_edge_1_body" mocap="true" pos="0 0 0">
+      <geom name="ttt_board_edge_1" type="capsule" size="0.004 0.1"
+        rgba="0 1 1 0" contype="0" conaffinity="0" density="0" />
+    </body>
+    <body name="ttt_board_edge_2_body" mocap="true" pos="0 0 0">
+      <geom name="ttt_board_edge_2" type="capsule" size="0.004 0.1"
+        rgba="0 1 1 0" contype="0" conaffinity="0" density="0" />
+    </body>
+    <body name="ttt_board_edge_3_body" mocap="true" pos="0 0 0">
+      <geom name="ttt_board_edge_3" type="capsule" size="0.004 0.1"
+        rgba="0 1 1 0" contype="0" conaffinity="0" density="0" />
+    </body>
     <body name="ttt_left_foot_anchor" mocap="true" pos="0 0 0">
       <site size="0.001" rgba="0 0 0 0" />
     </body>

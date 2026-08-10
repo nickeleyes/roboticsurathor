@@ -52,6 +52,7 @@ class DefaultEnv:
         self.reward_lock = Lock()
         self.ttt_marker_lock = Lock()
         self.pending_ttt_ik_target = None
+        self.pending_ttt_board_corners = None
         self.pending_ttt_foot_lock = False
 
         # Unitree bridge will be initialized by the simulator
@@ -137,7 +138,6 @@ class DefaultEnv:
             self.viewer.cam.distance = 2.0  # Distance from camera to target
             self.viewer.cam.lookat = np.array([0, 0, 0.5])  # Point the camera is looking at
 
-        # Note that the actuator order is the same as the joint order in the mujoco model.
         self.body_joint_index = []
         self.left_hand_index = []
         self.right_hand_index = []
@@ -155,13 +155,21 @@ class DefaultEnv:
             elif "right_hand" in name:
                 self.right_hand_index.append(i)
 
+        # HandCmd motor slots use thumb, index, middle order. Resolve the MuJoCo
+        # joints by name because their XML/model order is thumb, middle, index.
+        if self.num_hand_dof:
+            order = ("thumb_0", "thumb_1", "thumb_2", "index_0", "index_1", "middle_0", "middle_1")
+            for side, indices in (("left", self.left_hand_index), ("right", self.right_hand_index)):
+                by_name = {self.mj_model.joint(i).name: i for i in indices}
+                indices[:] = [by_name[f"{side}_hand_{name}_joint"] for name in order]
+
         assert len(self.body_joint_index) == self.config["NUM_JOINTS"]
         assert len(self.left_hand_index) == self.config["NUM_HAND_JOINTS"]
         assert len(self.right_hand_index) == self.config["NUM_HAND_JOINTS"]
 
         self.body_joint_index = np.array(self.body_joint_index)
-        self.left_hand_index = np.array(self.left_hand_index)
-        self.right_hand_index = np.array(self.right_hand_index)
+        self.left_hand_index = np.array(self.left_hand_index, dtype=int)
+        self.right_hand_index = np.array(self.right_hand_index, dtype=int)
 
     def init_renderers(self):
         # Initialize camera renderers
@@ -283,6 +291,8 @@ class DefaultEnv:
         with self.ttt_marker_lock:
             ik_target = self.pending_ttt_ik_target
             self.pending_ttt_ik_target = None
+            board_corners = self.pending_ttt_board_corners
+            self.pending_ttt_board_corners = None
             lock_feet = self.pending_ttt_foot_lock
             self.pending_ttt_foot_lock = False
         if lock_feet:
@@ -300,6 +310,23 @@ class DefaultEnv:
                 "Locked both feet to their current MuJoCo world poses",
                 flush=True,
             )
+        if board_corners is not None:
+            perimeter = board_corners[[0, 1, 3, 2, 0]]
+            for edge, (start, end) in enumerate(zip(perimeter[:-1], perimeter[1:])):
+                delta = end - start
+                direction = delta / np.linalg.norm(delta)
+                quat = np.array([1.0 + direction[2], -direction[1], direction[0], 0.0])
+                if np.linalg.norm(quat) < 1e-8:
+                    quat = np.array([0.0, 1.0, 0.0, 0.0])
+                quat /= np.linalg.norm(quat)
+                body_id = self.mj_model.body(f"ttt_board_edge_{edge}_body").id
+                geom_id = self.mj_model.geom(f"ttt_board_edge_{edge}").id
+                mocap_id = self.mj_model.body_mocapid[body_id]
+                self.mj_data.mocap_pos[mocap_id] = (start + end) / 2.0
+                self.mj_data.mocap_quat[mocap_id] = quat
+                self.mj_model.geom_size[geom_id, 1] = np.linalg.norm(delta) / 2.0
+                self.mj_model.geom_rgba[geom_id, 3] = 1.0
+            print("Displayed detected board corners in cyan", flush=True)
         if ik_target is not None:
             marker_id = self.mj_model.geom("ttt_ik_target").id
             body_id = self.mj_model.body("ttt_ik_target_body").id
@@ -448,6 +475,10 @@ class DefaultEnv:
     def set_ttt_ik_target(self, position):
         with self.ttt_marker_lock:
             self.pending_ttt_ik_target = np.asarray(position, dtype=float).copy()
+
+    def set_ttt_board_corners(self, corners):
+        with self.ttt_marker_lock:
+            self.pending_ttt_board_corners = np.asarray(corners, dtype=float).copy()
 
     def lock_ttt_feet(self):
         with self.ttt_marker_lock:

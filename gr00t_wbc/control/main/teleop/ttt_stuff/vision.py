@@ -1,4 +1,4 @@
-"""Detect the paper, rectify its grid, and classify all nine cells."""
+"""Detect the portrait paper, rectify its grid, and classify all nine cells."""
 from pathlib import Path
 
 import cv2
@@ -56,6 +56,10 @@ def detect(frame):
                 sums, differences = points.sum(1), np.diff(points, axis=1).ravel()
                 corners = points[[np.argmin(sums), np.argmin(differences),
                                   np.argmax(sums), np.argmax(differences)]]
+                # The physical paper is fixed 90 degrees counterclockwise (green
+                # edge at the bottom). Restore its original landscape coordinate
+                # frame so vision, localization, and planning share one convention.
+                corners = corners[[3, 0, 1, 2]]
                 break
         if corners is not None:
             break
