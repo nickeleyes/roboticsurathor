@@ -21,14 +21,28 @@ transform = transforms.Compose([
 ])
 OUTPUT_DIR = Path(__file__).with_name("outputs")
 
+# The paper is placed with its 17-inch dimension running away from the robot,
+# then rotated back into this landscape coordinate frame by the corner ordering
+# below.  Using 100 pixels per inch keeps print measurements easy to translate.
+PAPER_WIDTH = 1700
+PAPER_HEIGHT = 1100
+
+GRID_CROP = (314, 24, 1081, 1059)
+
 
 def odd(value):
     return int(round(value)) // 2 * 2 + 1
 
 
-def detect(frame):
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    cv2.imwrite(str(OUTPUT_DIR / "color.png"), frame)
+def detect(frame, save_debug=True):
+    if save_debug:
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    def save(name, image):
+        if save_debug:
+            cv2.imwrite(str(OUTPUT_DIR / name), image)
+
+    save("color.png", frame)
 
     scale = min(frame.shape[:2])
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -37,7 +51,7 @@ def detect(frame):
     kernel = np.ones((odd(scale * .012),) * 2, np.uint8)
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
-    cv2.imwrite(str(OUTPUT_DIR / "mask.png"), mask)
+    save("mask.png", mask)
 
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     corners = None
@@ -76,9 +90,10 @@ def detect(frame):
             2,
             cv2.LINE_AA,
         )
-        cv2.imwrite(str(OUTPUT_DIR / "corners.png"), corner_image)
-        cv2.imwrite(str(OUTPUT_DIR / "board_detection.png"), corner_image)
-        print(f"Saved vision debug images to {OUTPUT_DIR}", flush=True)
+        save("corners.png", corner_image)
+        save("board_detection.png", corner_image)
+        if save_debug:
+            print(f"Saved vision debug images to {OUTPUT_DIR}", flush=True)
         raise RuntimeError("No board-paper corners detected")
 
     cv2.polylines(corner_image, [corners.astype(np.int32)], True, (0, 255, 0), 2)
@@ -94,16 +109,31 @@ def detect(frame):
             2,
             cv2.LINE_AA,
         )
-    cv2.imwrite(str(OUTPUT_DIR / "corners.png"), corner_image)
+    save("corners.png", corner_image)
 
-    destination = np.array([[0, 0], [999, 0], [999, 773], [0, 773]], np.float32)
-    board = cv2.warpPerspective(frame, cv2.getPerspectiveTransform(corners, destination),
-                                (1000, 774))[45:735, 155:845]
-    cv2.imwrite(str(OUTPUT_DIR / "board_detection.png"), board)
+    destination = np.array(
+        [[0, 0], [PAPER_WIDTH - 1, 0],
+         [PAPER_WIDTH - 1, PAPER_HEIGHT - 1], [0, PAPER_HEIGHT - 1]],
+        np.float32,
+    )
+    paper = cv2.warpPerspective(
+        frame,
+        cv2.getPerspectiveTransform(corners, destination),
+        (PAPER_WIDTH, PAPER_HEIGHT),
+    )
+    grid_x, grid_y, grid_width, grid_height = GRID_CROP
+    board = paper[grid_y:grid_y + grid_height, grid_x:grid_x + grid_width]
+    save("board_detection.png", board)
     cells = []
+    cell_height = board.shape[0] // 3
+    cell_width = board.shape[1] // 3
     for row in range(3):
         for column in range(3):
-            cell = board[row * 230:(row + 1) * 230, column * 230:(column + 1) * 230]
+            cell = board[
+                row * cell_height:(row + 1) * cell_height,
+                column * cell_width:(column + 1) * cell_width,
+            ]
+            cell = cv2.rotate(cell, cv2.ROTATE_90_COUNTERCLOCKWISE)
             cells.append(transform(Image.fromarray(cv2.cvtColor(cell, cv2.COLOR_BGR2RGB))))
     with torch.inference_mode():
         label_indices = model(torch.stack(cells)).argmax(1).tolist()
@@ -115,13 +145,14 @@ def detect(frame):
         cv2.putText(
             detected_board,
             f"{index + 1}: {label}",
-            ((index % 3) * 230 + 8, (index // 3) * 230 + 25),
+            ((index % 3) * cell_width + 8, (index // 3) * cell_height + 25),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.55,
             (0, 0, 255),
             2,
             cv2.LINE_AA,
         )
-    cv2.imwrite(str(OUTPUT_DIR / "board_detection.png"), detected_board)
-    print(f"Saved vision debug images to {OUTPUT_DIR}", flush=True)
+    save("board_detection.png", detected_board)
+    if save_debug:
+        print(f"Saved vision debug images to {OUTPUT_DIR}", flush=True)
     return {"board_state": "".join(codes), "corners_uv": corners.tolist()}

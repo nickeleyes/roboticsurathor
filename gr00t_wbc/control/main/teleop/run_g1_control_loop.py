@@ -142,8 +142,6 @@ def main(
                         last_teleop_cmd = upper_body_cmd.copy()
                         if "ttt_ik_target" in wbc_goal:
                             env.set_ttt_ik_target(wbc_goal.pop("ttt_ik_target"))
-                        if "ttt_board_corners" in wbc_goal:
-                            env.set_ttt_board_corners(wbc_goal.pop("ttt_board_corners"))
                         if wbc_goal.pop("ttt_lock_feet", False):
                             env.lock_ttt_feet()
                         if config.ik_indicator:

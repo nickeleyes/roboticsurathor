@@ -1,27 +1,29 @@
-import json
-from pathlib import Path
 import threading
 import time
 
-import cv2
 import numpy as np
 from scipy.spatial.transform import Rotation
 
 from gr00t_wbc.control.main.constants import CONTROL_GOAL_TOPIC, STATE_TOPIC_NAME
 from gr00t_wbc.control.main.teleop.ttt_stuff.controller import Controller
 from gr00t_wbc.control.main.teleop.ttt_stuff.engine import move_code
-from gr00t_wbc.control.main.teleop.ttt_stuff.localization import localize
 from gr00t_wbc.control.main.teleop.ttt_stuff.pelvis_tracking import PelvisTracker
 from gr00t_wbc.control.main.teleop.ttt_stuff.planner import BoardPlanner
-from gr00t_wbc.control.main.teleop.ttt_stuff.ros2capture import capture
-from gr00t_wbc.control.main.teleop.ttt_stuff.vision import detect
 from gr00t_wbc.control.utils.ros_utils import ROSMsgPublisher, ROSMsgSubscriber
 
 POSE_DURATION = 5.0
 KEEPALIVE_PERIOD = 0.4
 WAIST_RELEASE_SETTLE_DURATION = 2.0
-CAPTURE_DIR = Path(__file__).resolve().parents[5] / "camera_captures"
-RIGHT_ARM_POSES = (
+OFFLINE_BOARD = "000000000"
+# Pelvis-frame cell centers: p1 green-left, p3 white-right,
+# p7 green-right, and p9 white-left.
+OFFLINE_CORNERS = np.array([
+    [0.34, 0.09, -0.03],
+    [0.52, 0.09, -0.03],
+    [0.34, -0.09, -0.03],
+    [0.52, -0.09, -0.03],
+])
+ARM_POSES = (
     ("shoulder roll 30, elbow 90", [0.0, np.deg2rad(-30), 0.0, np.pi / 2, 0.0, 0.0, 0.0]),
     ("shoulder roll 90, elbow 90", [0.0, -np.pi / 2, 0.0, np.pi / 2, 0.0, 0.0, 0.0]),
     ("shoulder roll 90, elbow 0", [0.0, -np.pi / 2, 0.0, 0.0, 0.0, 0.0, 0.0]),
@@ -31,7 +33,12 @@ RIGHT_ARM_POSES = (
 class TTTProgram:
     def __init__(self, config):
         self.config = config
-        self.controller = Controller()
+        self.controller = Controller(config.arm_side)
+        mirror = 1 if config.arm_side == "right" else -1
+        self.arm_poses = tuple(
+            (label, np.asarray(pose) * [1, mirror, 1, 1, 1, 1, 1])
+            for label, pose in ARM_POSES
+        )
         self.planner = BoardPlanner()
         self.pelvis = PelvisTracker() if config.env_type == "real" else None
         self.publisher = ROSMsgPublisher(CONTROL_GOAL_TOPIC)
@@ -47,7 +54,7 @@ class TTTProgram:
         self.move_thread = None
         self.ik_period = 1.0 / config.control_frequency
         self.upper_indices = self.controller.model.get_joint_group_indices("upper_body")
-        self.controlled = np.array([self.controller.waist_yaw, *self.controller.right_arm])
+        self.controlled = np.array([self.controller.waist_yaw, *self.controller.arm])
 
     def _publish(self, joints=None, duration=None, marker=None):
         goal = {
@@ -83,16 +90,16 @@ class TTTProgram:
             if not self.shutdown_event.is_set() and time.monotonic() < deadline:
                 self._publish()
 
-    def _arm_pose(self, right_arm):
+    def _arm_pose(self, arm):
         joints = self.controller.joints.copy()
         joints[self.controller.waist_yaw] = 0.0
-        joints[self.controller.right_arm] = right_arm
+        joints[self.controller.arm] = arm
         return joints
 
     def initialize(self):
         def run():
             try:
-                for index, (label, pose) in enumerate(RIGHT_ARM_POSES, 1):
+                for index, (label, pose) in enumerate(self.arm_poses, 1):
                     target = self._arm_pose(pose)
                     print(f"Initialization {index}/3: {label}", flush=True)
                     self._publish(target, POSE_DURATION)
@@ -187,23 +194,25 @@ class TTTProgram:
 
     def _capture_board(self):
         if self.config.offline:
-            frame = cv2.imread(str(CAPTURE_DIR / "color_rgb.png"))
-            if frame is None:
-                raise FileNotFoundError(CAPTURE_DIR / "color_rgb.png")
-            radial = np.load(CAPTURE_DIR / "radial_distance_m.npy")
-            intrinsics = json.loads((CAPTURE_DIR / "camera_intrinsics.json").read_text())
-            print(f"Using saved camera capture: {CAPTURE_DIR}", flush=True)
             state = self._state()
+            board, corners = OFFLINE_BOARD, OFFLINE_CORNERS.copy()
+            print("Using fixed offline board geometry (vision disabled)", flush=True)
         else:
+            from gr00t_wbc.control.main.teleop.ttt_stuff.localization import localize
+            from gr00t_wbc.control.main.teleop.ttt_stuff.ros2capture import capture
+            from gr00t_wbc.control.main.teleop.ttt_stuff.vision import detect
+
             frame, radial, intrinsics, state = capture(self._state)
+            camera_to_pelvis = None
+            if self.config.env_type == "real":
+                camera_to_pelvis = self.pelvis.camera_to_pelvis(state["q"])
+                waist_deg = np.rad2deg(np.asarray(state["q"])[self.pelvis.waist])
+                print(f"Camera capture waist yaw/roll/pitch: {np.round(waist_deg, 2)} deg", flush=True)
+            board, corners = localize(
+                detect(frame), radial, intrinsics, camera_to_pelvis
+            )
         if state is None:
             raise RuntimeError("Robot state unavailable at camera capture")
-        camera_to_pelvis = None
-        if self.config.env_type == "real" and not self.config.offline:
-            camera_to_pelvis = self.pelvis.camera_to_pelvis(state["q"])
-            waist_deg = np.rad2deg(np.asarray(state["q"])[self.pelvis.waist])
-            print(f"Camera capture waist yaw/roll/pitch: {np.round(waist_deg, 2)} deg", flush=True)
-        board, corners = localize(detect(frame), radial, intrinsics, camera_to_pelvis)
         return board, corners, move_code(board), state
 
     def _capture_context(self, corners, state):
@@ -216,8 +225,6 @@ class TTTProgram:
                 raise RuntimeError("Simulation pelvis pose unavailable")
             context["rotation"] = Rotation.from_quat(base[[4, 5, 6, 3]]).as_matrix()
             context["position"] = base[:3]
-            world_corners = corners @ context["rotation"].T + context["position"]
-            self.publisher.publish({"ttt_board_corners": world_corners.tolist()})
         print(f"Board corners in captured pelvis frame:\n{np.round(corners, 4)}", flush=True)
         return context
 
@@ -337,7 +344,7 @@ class TTTProgram:
                     break
 
             if not self.shutdown_event.is_set():
-                self._publish(self._arm_pose(RIGHT_ARM_POSES[-1][1]), POSE_DURATION)
+                self._publish(self._arm_pose(self.arm_poses[-1][1]), POSE_DURATION)
                 self._hold(POSE_DURATION)
                 completed = not self.shutdown_event.is_set()
         except Exception as error:

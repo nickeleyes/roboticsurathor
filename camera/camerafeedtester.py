@@ -14,7 +14,9 @@ ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_IMAGE = ROOT / "camera_captures/color_rgb.png"
 DEFAULT_MODEL = ROOT / "camera/models/center_resnet18.pt"
 DEFAULT_OUTPUT = ROOT / "camera_captures/board_detection"
-GRID_CROP = (155, 45, 690, 690)
+PAPER_WIDTH = 1700
+PAPER_HEIGHT = 1100
+GRID_CROP = (314, 24, 1081, 1059)
 LABEL_TO_CODE = {"empty": "0", "green": "1", "white": "2"}
 
 
@@ -59,9 +61,13 @@ def find_board_corners(frame):
 
 
 def warp_board(frame, corners):
-    destination = np.array([[0, 0], [999, 0], [999, 773], [0, 773]], np.float32)
+    destination = np.array(
+        [[0, 0], [PAPER_WIDTH - 1, 0],
+         [PAPER_WIDTH - 1, PAPER_HEIGHT - 1], [0, PAPER_HEIGHT - 1]],
+        np.float32,
+    )
     matrix = cv2.getPerspectiveTransform(corners, destination)
-    return cv2.warpPerspective(frame, matrix, (1000, 774))
+    return cv2.warpPerspective(frame, matrix, (PAPER_WIDTH, PAPER_HEIGHT))
 
 
 def load_model(path):

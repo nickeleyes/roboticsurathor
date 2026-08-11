@@ -81,22 +81,6 @@
       <geom name="ttt_ik_target" type="sphere" size="0.012"
         rgba="1 0 0 0" contype="0" conaffinity="0" density="0" />
     </body>
-    <body name="ttt_board_edge_0_body" mocap="true" pos="0 0 0">
-      <geom name="ttt_board_edge_0" type="capsule" size="0.004 0.1"
-        rgba="0 1 1 0" contype="0" conaffinity="0" density="0" />
-    </body>
-    <body name="ttt_board_edge_1_body" mocap="true" pos="0 0 0">
-      <geom name="ttt_board_edge_1" type="capsule" size="0.004 0.1"
-        rgba="0 1 1 0" contype="0" conaffinity="0" density="0" />
-    </body>
-    <body name="ttt_board_edge_2_body" mocap="true" pos="0 0 0">
-      <geom name="ttt_board_edge_2" type="capsule" size="0.004 0.1"
-        rgba="0 1 1 0" contype="0" conaffinity="0" density="0" />
-    </body>
-    <body name="ttt_board_edge_3_body" mocap="true" pos="0 0 0">
-      <geom name="ttt_board_edge_3" type="capsule" size="0.004 0.1"
-        rgba="0 1 1 0" contype="0" conaffinity="0" density="0" />
-    </body>
     <body name="ttt_left_foot_anchor" mocap="true" pos="0 0 0">
       <site size="0.001" rgba="0 0 0 0" />
     </body>
@@ -342,6 +326,8 @@
                             mesh="left_hand_palm_link" />
                           <geom pos="0.0415 0.003 0" quat="1 0 0 0" type="mesh" rgba="0.7 0.7 0.7 1"
                             mesh="left_hand_palm_link" />
+                          <site name="left_hand_grip_center" pos="0.10264634836 -0.08750869656 0.02441828907"
+                            size="0.012" rgba="1 0 1 1" type="sphere" />
                           <body name="left_hand_thumb_0_link" pos="0.067 0.003 0">
                             <inertial pos="-0.000884246 -0.00863407 0.000944293"
                               quat="0.462991 0.643965 -0.460173 0.398986" mass="0.0862366"
@@ -494,8 +480,8 @@
                           <geom pos="0.0415 -0.003 0" quat="1 0 0 0" type="mesh"
                             rgba="0.7 0.7 0.7 1" mesh="right_hand_palm_link" />
                           <!-- right_hand_palm_center plus the tuned grip offset:
-                               +8.5 cm forward, +7 cm down, +3 cm left. -->
-                          <site name="right_hand_grip_center" pos="0.13864634836 0.06750869656 0.02941828907"
+                               +4.9 cm forward, +9 cm down, +2.5 cm to the index finger. -->
+                          <site name="right_hand_grip_center" pos="0.10264634836 0.08750869656 0.02441828907"
                             size="0.012" rgba="1 0 1 1" type="sphere" />
                           <!-- <geom type="sphere" size="0.07" pos="0.05364634836 -0.00249130344 -0.00058171093" contype="0" conaffinity="0"
                             group="1" density="0" rgba="1 0 0 1" /> -->

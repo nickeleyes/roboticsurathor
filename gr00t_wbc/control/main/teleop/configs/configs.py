@@ -60,6 +60,11 @@ def override_wbc_config(
         for key in key_to_value:
             wbc_config[key] = key_to_value[key]
 
+    # g1 kp, kd, sim2real gap
+    if config.env_type == "real":
+        # update waist pitch damping, index 14
+        wbc_config["MOTOR_KD"][14] = wbc_config["MOTOR_KD"][14] - 10
+
     return wbc_config
 
 
