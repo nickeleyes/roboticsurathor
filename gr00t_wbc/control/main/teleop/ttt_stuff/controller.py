@@ -11,7 +11,7 @@ from gr00t_wbc.control.teleop.teleop_retargeting_ik import TeleopRetargetingIK
 HAND_POSES = {
     "thumb_0": (-0.45, -0.45),
     "thumb_1": (0.5, -0.60),
-    "thumb_2": (-0.5, -0.3),
+    "thumb_2": (-0.5, -0.8),
     "index_0": (0.0, 0.0),
     "index_1": (0.0, 0.0),
     "middle_0": (np.pi / 2 * (75/90) , np.pi / 2 * (75/90)),

@@ -36,6 +36,8 @@ def main(config: TTTConfig) -> None:
                 program.start_move()
             elif key in ("space", " "):
                 program.continue_move()
+            elif key == "=":
+                program.toggle_automatic()
             time.sleep(0.01)
     except ros_manager.exceptions() as error:
         print(f"TTT task interrupted: {error}", flush=True)

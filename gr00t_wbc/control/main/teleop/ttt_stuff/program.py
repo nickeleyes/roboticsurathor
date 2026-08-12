@@ -14,6 +14,10 @@ from gr00t_wbc.control.utils.ros_utils import ROSMsgPublisher, ROSMsgSubscriber
 POSE_DURATION = 5.0
 KEEPALIVE_PERIOD = 0.4
 WAIST_RELEASE_SETTLE_DURATION = 2.0
+AUTO_SETTLE_DURATION = 0.5
+AUTO_POSITION_TOLERANCE = 0.01
+AUTO_ORIENTATION_TOLERANCE = np.deg2rad(8.0)
+AUTO_SPEED_TOLERANCE = np.deg2rad(2.0)
 OFFLINE_BOARD = "000000000"
 # Pelvis-frame cell centers: p1 green-left, p3 white-right,
 # p7 green-right, and p9 white-left.
@@ -45,6 +49,7 @@ class TTTProgram:
         self.state_subscriber = ROSMsgSubscriber(STATE_TOPIC_NAME)
         self.initialized = threading.Event()
         self.continue_event = threading.Event()
+        self.automatic = threading.Event()
         self.shutdown_event = threading.Event()
         self._continue_lock = threading.Lock()
         self._ownership_lock = threading.Lock()
@@ -146,6 +151,14 @@ class TTTProgram:
                 return
             self.continue_event.set()
 
+    def toggle_automatic(self):
+        if self.automatic.is_set():
+            self.automatic.clear()
+            print("Automatic waypoints OFF; press SPACE to advance", flush=True)
+        else:
+            self.automatic.set()
+            print("Automatic waypoints ON; advancing after each pose settles", flush=True)
+
     def _arm_continue_gate(self):
         with self._continue_lock:
             self.continue_event.clear()
@@ -160,7 +173,7 @@ class TTTProgram:
         self._arm_continue_gate()
         try:
             while not self.shutdown_event.is_set():
-                if self.continue_event.wait(0.1):
+                if self.automatic.is_set() or self.continue_event.wait(0.1):
                     return True
             return False
         finally:
@@ -249,6 +262,7 @@ class TTTProgram:
     def _run_waypoint(self, target, grabbing):
         marker = target[2] if self.config.env_type == "sim" else None
         last_log = 0.0
+        settled_since = None
         self._arm_continue_gate()
         try:
             while not self.continue_event.is_set() and not self.shutdown_event.is_set():
@@ -260,7 +274,8 @@ class TTTProgram:
                     position, rotation = self._current_target(target, state)
                     full_q = np.asarray(state["q"])
                     log = started - last_log >= 0.5
-                    if log:
+                    measure = log or self.automatic.is_set()
+                    if measure:
                         self.controller.model.cache_forward_kinematics(full_q, auto_clip=False)
                         grip = self.controller.model.frame_placement(self.controller.site)
                         error = np.linalg.norm(grip.translation - position)
@@ -273,8 +288,19 @@ class TTTProgram:
                             )
                         )
                     solved = self.controller.ik(position, rotation, full_q, grabbing)
-                    self._publish(solved, self.ik_period, marker)
+                    self._publish(solved, 0.10, marker)
                     marker = None
+                    settled = measure and (
+                        error <= AUTO_POSITION_TOLERANCE
+                        and normal_error <= AUTO_ORIENTATION_TOLERANCE
+                        and joint_speed <= AUTO_SPEED_TOLERANCE
+                    )
+                    if self.automatic.is_set() and settled:
+                        settled_since = settled_since or started
+                        if started - settled_since >= AUTO_SETTLE_DURATION:
+                            return
+                    else:
+                        settled_since = None
                     if log:
                         print(
                             f"Live IK {target[0]} {target[1]}: "

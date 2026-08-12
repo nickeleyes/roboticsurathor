@@ -138,6 +138,7 @@ Then, inside the GR00T container:
 export DISPLAY=:1
 python3 gr00t_wbc/control/main/teleop/run_ttt.py --interface sim
 ```
+Relevant `run_ttt.py` arguments: `--interface {sim,real}`, `--arm-side {left,right}`, and `--offline` for fixed-board mode (omit it for live vision).
 
 Press the Logitech F310 `X` button. It captures synchronized RGB and depth,
 detects the board, localizes it, plans the move, and moves only the simulated robot.

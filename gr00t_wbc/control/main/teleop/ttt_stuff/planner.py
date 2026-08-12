@@ -1,6 +1,6 @@
 import numpy as np
 
-HEIGHTS = {"high": 0.14, "close": 0.10, "grab": 0.045}
+HEIGHTS = {"high": 0.14, "close": 0.10, "grab": 0.025}
 
 
 def unit(v):
@@ -90,6 +90,8 @@ class BoardPlanner:
         height = HEIGHTS[height] if isinstance(height, str) else height
         normal = -rotation[:, 1]
         position = points[name] + rotation[:, 2] * 0.01
+        if name.startswith("pos"):
+            position += (rotation[:, 2] - rotation[:, 0]) * 0.02
         angle = np.deg2rad(15.0)
         rotation = rotation @ np.array([[np.cos(angle), -np.sin(angle), 0],
                                         [np.sin(angle), np.cos(angle), 0], [0, 0, 1]])
